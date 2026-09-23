@@ -28,6 +28,7 @@
 
   <!-- Applies the saved/preferred theme before first paint, so there's no
        flash of the wrong theme while the stylesheet is still loading. -->
+       <meta name="csrf-token" content="{{ csrf_token() }}">
   <script>
     (function() {
       const stored = localStorage.getItem('snpro-theme');

@@ -553,6 +553,7 @@ def job_view(job_id):
 
 @tools_bp.route("/job/<int:job_id>/status.json")
 @login_required
+@limiter.exempt
 def job_status_json(job_id):
     job = Job.query.get_or_404(job_id)
     if job.user_id != current_user.id:

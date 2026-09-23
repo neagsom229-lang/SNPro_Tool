@@ -136,13 +136,87 @@ def transcribe_audio(audio_path: str, lang_code: Optional[str] = None) -> dict:
 # --------------------------------------------------------------------------
 
 def _translate_with_google(text: str, target_lang: str, source_lang: Optional[str]) -> str:
-    from google.cloud import translate_v2 as translate
-    client = translate.Client(client_options={"api_key": GOOGLE_TRANSLATE_API_KEY} if GOOGLE_TRANSLATE_API_KEY else None)
-    result = client.translate(text, target_language=target_lang, source_language=source_lang)
-    return result["translatedText"]
+    """
+    Free translation via deep-translator.
+    Google first (4000-char chunks); falls to MyMemory on rate-limit,
+    re-chunked to 450 chars to respect MyMemory's 500-char limit.
+    """
+    import time
+    from deep_translator import GoogleTranslator, MyMemoryTranslator
+    from deep_translator.exceptions import TooManyRequests
+
+    tgt = (target_lang or "en").lower()
+    src = (source_lang or "auto").lower()
+
+    mymemory_map = {
+        "en": "en-GB", "km": "km-KH", "zh": "zh-CN", "ja": "ja-JP",
+        "ko": "ko-KR", "fr": "fr-FR", "es": "es-ES", "de": "de-DE",
+        "th": "th-TH", "vi": "vi-VN", "ru": "ru-RU", "hi": "hi-IN",
+        "ar": "ar-SA", "pt": "pt-PT", "it": "it-IT", "id": "id-ID",
+    }
+    mm_src = mymemory_map.get(src, "en-GB")
+    mm_tgt = mymemory_map.get(tgt, "en-GB")
+
+    # Track whether Google is dead for this task — one failure = skip for all
+    # remaining chunks, saves ~30s per chunk when we're IP-blocked.
+    google_dead = [False]
+
+    def translate_google(chunk: str):
+        """Return translated chunk via Google, or None on failure."""
+        if google_dead[0]:
+            return None
+        for attempt in range(2):  # 2 tries, then mark dead
+            try:
+                return GoogleTranslator(source=src, target=tgt).translate(chunk)
+            except TooManyRequests:
+                if attempt == 0:
+                    logger.warning("Google rate limit — one short retry")
+                    time.sleep(5)
+                else:
+                    logger.warning("Google dead for this task — using MyMemory only")
+                    google_dead[0] = True
+            except Exception:
+                logger.exception("Google chunk failed — using MyMemory only")
+                google_dead[0] = True
+                return None
+        return None
+
+    def translate_mymemory(chunk: str) -> str:
+        """Translate via MyMemory. Chunk must be ≤ 500 chars."""
+        # MyMemory caps at 500 chars — split further if needed.
+        parts = [chunk[i:i + 450] for i in range(0, len(chunk), 450)]
+        out = []
+        for part in parts:
+            try:
+                out.append(MyMemoryTranslator(source=mm_src, target=mm_tgt).translate(part))
+                time.sleep(0.3)
+            except Exception:
+                logger.exception("MyMemory chunk failed — keeping original text")
+                out.append(part)
+        return " ".join(out)
+
+    # Google chunks are 4000 chars; MyMemory sub-chunks internally.
+    chunks = [text[i:i + 4000] for i in range(0, len(text), 4000)]
+
+    out_parts = []
+    for i, chunk in enumerate(chunks):
+        result = translate_google(chunk)
+        if result is None:
+            result = translate_mymemory(chunk)
+        out_parts.append(result)
+        logger.info("Translated chunk %d/%d", i + 1, len(chunks))
+        if i < len(chunks) - 1:
+            time.sleep(0.5)
+
+    return " ".join(out_parts)
 
 def _translate_with_deepl(text: str, target_lang: str, source_lang: Optional[str]) -> str:
-    import deepl # type: ignore
+    import deepl  # type: ignore
+
+    # DeepL doesn't support Khmer. Raise early so translate_text() skips it.
+    if (target_lang or "").lower() in ("km", "khmer"):
+        raise ValueError("DeepL does not support Khmer")
+
     translator = deepl.Translator(DEEPL_API_KEY)
     result = translator.translate_text(
         text,
@@ -244,10 +318,21 @@ def synthesize_with_elevenlabs(text: str, output_path: str, voice_id: Optional[s
     return output_path
 
 def _synthesize_with_gtts(text: str, lang_code: str, output_path: str) -> str:
+    """gTTS with retries — its underlying HTTP calls have no timeout by default."""
     from gtts import gTTS
-    tts = gTTS(text=text, lang=lang_code, slow=False)
-    tts.save(output_path)
-    return output_path
+    import time
+
+    last_err = None
+    for attempt in range(3):
+        try:
+            tts = gTTS(text=text, lang=lang_code, slow=False, timeout=30)
+            tts.save(output_path)
+            return output_path
+        except Exception as e:
+            last_err = e
+            logger.warning("gTTS attempt %d failed: %s", attempt + 1, e)
+            time.sleep(3)
+    raise RuntimeError(f"gTTS failed after 3 attempts: {last_err}")
 
 def synthesize_speech(
     text: str,
