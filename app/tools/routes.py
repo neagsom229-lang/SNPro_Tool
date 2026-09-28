@@ -53,6 +53,12 @@ def _new_job(tool, label=""):
     return job
 
 
+def _active_job_limit_ok():
+    limit = int(os.environ.get("MAX_ACTIVE_JOBS_PER_USER", 3))
+    active_count = Job.query.filter_by(user_id=current_user.id).filter(Job.status.in_(("pending", "running"))).count()
+    return active_count < limit
+
+
 def _safe_redirect_url(url, fallback):
     """Prevent open redirects by rejecting absolute URLs."""
     if not url:
@@ -71,6 +77,9 @@ def _safe_redirect_url(url, fallback):
 @limiter.limit("10 per minute", methods=["POST"])
 def video_downloader():
     if request.method == "POST":
+        if not _active_job_limit_ok():
+            flash("You already have N active jobs. Please wait for one to finish.", "warning")
+            return redirect(url_for("tools.video_downloader"))
         url = request.form.get("url", "").strip()
         mode = request.form.get("mode", "video")
         if not url:
@@ -94,6 +103,9 @@ def video_downloader():
 @login_required
 def speech_to_text():
     if request.method == "POST":
+        if not _active_job_limit_ok():
+            flash("You already have N active jobs. Please wait for one to finish.", "warning")
+            return redirect(url_for("tools.speech_to_text"))
         file = request.files.get("audio")
         language = request.form.get("language", "en-US")
 
@@ -126,6 +138,9 @@ def speech_to_text():
 @login_required
 def video_to_frames():
     if request.method == "POST":
+        if not _active_job_limit_ok():
+            flash("You already have N active jobs. Please wait for one to finish.", "warning")
+            return redirect(url_for("tools.video_to_frames"))
         file = request.files.get("video")
         frame_rate = float(request.form.get("frame_rate", 1))
         if not file or file.filename == "":
@@ -153,6 +168,9 @@ def video_to_frames():
 @login_required
 def pdf_to_word():
     if request.method == "POST":
+        if not _active_job_limit_ok():
+            flash("You already have N active jobs. Please wait for one to finish.", "warning")
+            return redirect(url_for("tools.pdf_to_word"))
         file = request.files.get("pdf")
         if not file or file.filename == "":
             flash("Please choose a PDF file.", "warning")
@@ -180,6 +198,9 @@ def pdf_to_word():
 @limiter.limit("10 per minute", methods=["POST"])
 def images_to_video():
     if request.method == "POST":
+        if not _active_job_limit_ok():
+            flash("You already have N active jobs. Please wait for one to finish.", "warning")
+            return redirect(url_for("tools.images_to_video"))
         files = request.files.getlist("images")
         audio_file = request.files.get("audio")
         fps = int(request.form.get("fps", 1))
@@ -231,6 +252,9 @@ def images_to_video():
 @login_required
 def qr_code():
     if request.method == "POST":
+        if not _active_job_limit_ok():
+            flash("You already have N active jobs. Please wait for one to finish.", "warning")
+            return redirect(url_for("tools.qr_code"))
         text = request.form.get("text", "").strip()
         if not text:
             flash("Please enter some text or a URL.", "warning")
@@ -268,6 +292,9 @@ def qr_code():
 @login_required
 def text_to_speech():
     if request.method == "POST":
+        if not _active_job_limit_ok():
+            flash("You already have N active jobs. Please wait for one to finish.", "warning")
+            return redirect(url_for("tools.text_to_speech"))
         text = request.form.get("text", "").strip()
         lang = request.form.get("lang", "en")
         if not text:
@@ -305,6 +332,9 @@ def text_to_speech():
 @login_required
 def background_remover():
     if request.method == "POST":
+        if not _active_job_limit_ok():
+            flash("You already have N active jobs. Please wait for one to finish.", "warning")
+            return redirect(url_for("tools.background_remover"))
         file = request.files.get("image")
         if not file or file.filename == "":
             flash("Please choose an image.", "warning")
@@ -332,6 +362,9 @@ def background_remover():
 @limiter.limit("10 per minute", methods=["POST"])
 def background_replacer():
     if request.method == "POST":
+        if not _active_job_limit_ok():
+            flash("You already have N active jobs. Please wait for one to finish.", "warning")
+            return redirect(url_for("tools.background_replacer"))
         subject_file = request.files.get("subject")
         bg_file = request.files.get("background")
         light_direction = request.form.get("light_direction", "none")
@@ -363,6 +396,9 @@ def background_replacer():
 @login_required
 def photo_repair():
     if request.method == "POST":
+        if not _active_job_limit_ok():
+            flash("You already have N active jobs. Please wait for one to finish.", "warning")
+            return redirect(url_for("tools.photo_repair"))
         file = request.files.get("image")
         if not file or file.filename == "":
             flash("Please choose an image.", "warning")
@@ -390,6 +426,9 @@ def photo_repair():
 @limiter.limit("10 per minute", methods=["POST"])
 def audio_remover():
     if request.method == "POST":
+        if not _active_job_limit_ok():
+            flash("You already have N active jobs. Please wait for one to finish.", "warning")
+            return redirect(url_for("tools.audio_remover"))
         video_file = request.files.get("video")
         audio_file = request.files.get("audio")
 
@@ -537,6 +576,7 @@ def speech_translator_status(job_id):
         "result_url": result_url,
         "error_message": getattr(job, "error_message", None),
     })
+
 
 
 # ---------------------------------------------------------------------------

@@ -65,7 +65,6 @@ def make_celery(app):
         "watchdog-stuck-jobs-hourly": {
             "task": "tools.watchdog_stuck_jobs",
             "schedule": crontab(minute=0),
-            "args": (2200,),
         },
     }
 

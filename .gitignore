@@ -9,3 +9,4 @@ storage/
 storage_exports/
 *.log
 .DS_Store
+/test_*.mp3

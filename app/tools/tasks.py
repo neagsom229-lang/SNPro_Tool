@@ -1665,28 +1665,34 @@ def cleanup_old_jobs(days: int = 7):
                                 mtime = datetime.fromtimestamp(os.path.getmtime(fpath))
                                 if mtime < cutoff:
                                     os.remove(fpath)
-                            except Exception:
-                                pass
+                            except Exception as e:
+                                current_app.logger.warning(f"Failed to process file {fpath}: {e}")
                         for d in dirs:
                             dpath = os.path.join(root, d)
                             try:
                                 if not os.listdir(dpath):
                                     os.rmdir(dpath)
-                            except Exception:
-                                pass
+                            except Exception as e:
+                                current_app.logger.warning(f"Failed to remove directory {dpath}: {e}")
 
-    # Delete expired Job rows
-    old_jobs = Job.query.filter(Job.created_at < cutoff).all()
+    # Delete expired Job rows in batches of 100 and only for status in (success, failure)
     deleted_count = 0
-    for job in old_jobs:
-        try:
-            db.session.delete(job)
-            deleted_count += 1
-        except Exception as e:
-            current_app.logger.error(f"Failed to cleanup job {job.id}: {e}")
-
-    if deleted_count > 0 or True:
+    while True:
+        old_jobs = Job.query.filter(
+            Job.created_at < cutoff,
+            Job.status.in_(("success", "failure"))
+        ).limit(100).all()
+        if not old_jobs:
+            break
+        for job in old_jobs:
+            try:
+                db.session.delete(job)
+                deleted_count += 1
+            except Exception as e:
+                current_app.logger.error(f"Failed to cleanup job {job.id}: {e}")
         db.session.commit()
+
+    if deleted_count > 0:
         current_app.logger.info(f"Cleaned up {deleted_count} job rows and old files older than {days} days.")
 
 

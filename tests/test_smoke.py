@@ -182,3 +182,34 @@ def test_video_enhancer_csrf_success(auth_client):
     post_res = auth_client.post("/tools/video-enhancer", data=data, content_type="multipart/form-data", follow_redirects=True)
     # Status code will not be 400 (Bad Request from CSRF failure), it will process or fail at job creation/ffprobe, not 400.
     assert post_res.status_code != 400
+
+
+def test_beat_schedule_signatures(app):
+    """
+    Ensure every entry in celery.conf.beat_schedule has args/kwargs that
+    match the task's signature.
+    """
+    from extensions import celery
+    if not celery:
+        pytest.skip("Celery not configured")
+
+    beat_schedule = celery.conf.beat_schedule
+    for name, entry in beat_schedule.items():
+        task_path = entry["task"]
+        # task_path is like 'tools.watchdog_stuck_jobs'
+        # In this project, tasks are in app.tools.tasks and registered with names like 'tools.watchdog_stuck_jobs'
+        # Celery tasks are accessible via celery.tasks
+        assert task_path in celery.tasks, f"Task {task_path} not found in celery.tasks"
+        task_func = celery.tasks[task_path]
+        
+        # task_func is a Celery task object, the actual function is task_func.run
+        # or we can use inspect.signature(task_func.run)
+        sig = inspect.signature(task_func.run)
+        
+        args = entry.get("args", ())
+        kwargs = entry.get("kwargs", {})
+        
+        try:
+            sig.bind(*args, **kwargs)
+        except TypeError as e:
+            pytest.fail(f"Beat schedule entry '{name}' (task '{task_path}') has signature mismatch: {e}")

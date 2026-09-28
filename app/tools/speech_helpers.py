@@ -98,9 +98,30 @@ def transcribe_audio(audio_path: str, lang_code: Optional[str] = None) -> dict:
     Consolidated to use ai_helpers.transcribe_with_whisper and the shared model cache.
     Returns dict with keys: text, detected_lang, duration_seconds.
     """
-    import librosa
-    audio, sr = librosa.load(audio_path, sr=16000, mono=True)
-    duration_seconds = len(audio) / sr
+    import subprocess
+    import json
+
+    duration_seconds = 0.0
+    try:
+        cmd = [
+            "ffprobe",
+            "-v", "error",
+            "-show_entries", "format=duration",
+            "-of", "json",
+            audio_path
+        ]
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=30, check=True)
+        data = json.loads(res.stdout)
+        duration_seconds = float(data["format"]["duration"])
+    except Exception:
+        logger.warning("ffprobe failed to get duration for %s, falling back to librosa", audio_path, exc_info=True)
+        try:
+            import librosa
+            audio, sr = librosa.load(audio_path, sr=16000, mono=True)
+            duration_seconds = len(audio) / sr
+        except Exception:
+            logger.exception("librosa fallback also failed for %s", audio_path)
+            duration_seconds = 0.0
 
     from app.tools.ai_helpers import transcribe_with_whisper
     res = transcribe_with_whisper(audio_path, language=lang_code, duration_hint=duration_seconds)
