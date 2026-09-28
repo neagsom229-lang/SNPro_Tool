@@ -1643,48 +1643,78 @@ def task_auto_edit_video(self, job_id, clip_paths, out_dir, template_name="cinem
 @shared_task(name="tools.cleanup_old_jobs")
 def cleanup_old_jobs(days: int = 7):
     """
-    Periodic Celery beat task to clean up old job rows and their associated storage directories
-    (outputs and uploads) older than N days.
+    Periodic Celery beat task to clean up old job rows and files older than N days.
+    Walks users/*/uploads/** and users/*/outputs/**, deletes files whose mtime is older than retention,
+    removes empty directories, and deletes expired Job rows. Uses naive datetime.utcnow().
     """
-    from datetime import datetime, timedelta, timezone
-    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
-    old_jobs = Job.query.filter(Job.created_at < cutoff).all()
+    from datetime import datetime, timedelta
+    cutoff = datetime.utcnow() - timedelta(days=days)
     storage_root = current_app.config["STORAGE_ROOT"]
 
+    # Walk uploads and outputs and remove old files & empty dirs
+    users_base = os.path.join(storage_root, "users")
+    if os.path.exists(users_base):
+        for user_folder in os.listdir(users_base):
+            for sub in ["uploads", "outputs"]:
+                sub_dir = os.path.join(users_base, user_folder, sub)
+                if os.path.exists(sub_dir):
+                    for root, dirs, files in os.walk(sub_dir, topdown=False):
+                        for file in files:
+                            fpath = os.path.join(root, file)
+                            try:
+                                mtime = datetime.fromtimestamp(os.path.getmtime(fpath))
+                                if mtime < cutoff:
+                                    os.remove(fpath)
+                            except Exception:
+                                pass
+                        for d in dirs:
+                            dpath = os.path.join(root, d)
+                            try:
+                                if not os.listdir(dpath):
+                                    os.rmdir(dpath)
+                            except Exception:
+                                pass
+
+    # Delete expired Job rows
+    old_jobs = Job.query.filter(Job.created_at < cutoff).all()
     deleted_count = 0
     for job in old_jobs:
         try:
-            out_dir = os.path.join(storage_root, "users", str(job.user_id), "outputs", str(job.tool), str(job.id))
-            if os.path.exists(out_dir):
-                shutil.rmtree(out_dir, ignore_errors=True)
-            up_dir = os.path.join(storage_root, "users", str(job.user_id), "uploads", str(job.tool), str(job.id))
-            if os.path.exists(up_dir):
-                shutil.rmtree(up_dir, ignore_errors=True)
             db.session.delete(job)
             deleted_count += 1
         except Exception as e:
             current_app.logger.error(f"Failed to cleanup job {job.id}: {e}")
 
-    if deleted_count > 0:
+    if deleted_count > 0 or True:
         db.session.commit()
-        current_app.logger.info(f"Cleaned up {deleted_count} jobs and associated files older than {days} days.")
+        current_app.logger.info(f"Cleaned up {deleted_count} job rows and old files older than {days} days.")
 
 
 @shared_task(name="tools.watchdog_stuck_jobs")
-def watchdog_stuck_jobs(max_age_seconds: int = 2200):
+def watchdog_stuck_jobs():
     """
-    Celery beat task to mark jobs stuck in pending or running for longer than
-    task_time_limit + 5 minutes as failed due to worker crash or timeout.
+    Celery beat task to mark stuck jobs as failed:
+    - pending jobs older than 2 hours (7200s) based on created_at.
+    - running jobs older than task_time_limit + 300 seconds (2200s) based on updated_at.
+    Uses naive datetime.utcnow().
     """
-    from datetime import datetime, timedelta, timezone
-    cutoff = datetime.now(timezone.utc) - timedelta(seconds=max_age_seconds)
-    stuck_jobs = Job.query.filter(
-        Job.status.in_(["pending", "running"]),
-        Job.updated_at < cutoff
+    from datetime import datetime, timedelta
+    now = datetime.utcnow()
+    pending_cutoff = now - timedelta(hours=2)
+    running_cutoff = now - timedelta(seconds=2200)
+
+    stuck_pending = Job.query.filter(
+        Job.status == "pending",
+        Job.created_at < pending_cutoff
+    ).all()
+
+    stuck_running = Job.query.filter(
+        Job.status == "running",
+        Job.updated_at < running_cutoff
     ).all()
 
     count = 0
-    for job in stuck_jobs:
+    for job in stuck_pending + stuck_running:
         job.status = "failure"
         job.message = "Job timed out or worker crashed"
         job.error_message = "Job timed out or worker crashed"

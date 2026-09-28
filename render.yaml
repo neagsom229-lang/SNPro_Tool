@@ -35,7 +35,7 @@ services:
     name: snpro-worker
     env: python
     buildCommand: pip install -r requirements.txt
-    startCommand: celery -A celery_worker.celery worker -B --loglevel=info -P solo -Q heavy,light
+    startCommand: celery -A celery_worker.celery worker -B --loglevel=info --concurrency=2 -Q heavy,light
     envVars:
       - key: FLASK_SECRET_KEY
         generateValue: true

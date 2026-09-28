@@ -89,39 +89,23 @@ def _translation_cache_set(text, target_lang, source_lang, result):
     _TRANSLATION_CACHE[_translation_cache_key(text, target_lang, source_lang)] = result
 
 # --------------------------------------------------------------------------
-# 1. Transcription – Whisper
+# 1. Transcription – Whisper (Consolidated with shared ai_helpers cache)
 # --------------------------------------------------------------------------
-
-_whisper_model = None
 
 def transcribe_audio(audio_path: str, lang_code: Optional[str] = None) -> dict:
     """
     Transcribe an audio file using Whisper (open-source, 99 languages).
+    Consolidated to use ai_helpers.transcribe_with_whisper and the shared model cache.
     Returns dict with keys: text, detected_lang, duration_seconds.
     """
-    global _whisper_model
-
-    try:
-        import whisper
-    except ImportError:
-        raise RuntimeError("Whisper not installed. Run: pip install openai-whisper")
-
-    if _whisper_model is None:
-        logger.info("Loading Whisper model (base)...")
-        _whisper_model = whisper.load_model("base")  # or "small"/"medium"
-
     import librosa
     audio, sr = librosa.load(audio_path, sr=16000, mono=True)
     duration_seconds = len(audio) / sr
 
-    result = _whisper_model.transcribe(
-        audio_path,
-        language=lang_code or None,  # None = auto-detect
-        verbose=False,
-    )
-
-    text = result["text"].strip()
-    detected_lang = result.get("language", lang_code or "unknown")
+    from app.tools.ai_helpers import transcribe_with_whisper
+    res = transcribe_with_whisper(audio_path, language=lang_code, duration_hint=duration_seconds)
+    text = res.get("text", "").strip()
+    detected_lang = res.get("detected_lang", lang_code or "unknown")
 
     logger.info("Transcribed %.1fs of audio -> %d chars (lang=%s)", duration_seconds, len(text), detected_lang)
 
