@@ -10,6 +10,7 @@ import click
 def create_app(config_class=Config):
     app = Flask(__name__, static_folder="static", template_folder="templates")
     app.config.from_object(config_class)
+    config_class.check_production_secrets()
 
     # Trust reverse proxy headers
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)

@@ -279,3 +279,39 @@ def _debug_redis_url():
     masked_broker = re.sub(r':[^@]+@', ':***@', broker)
     masked_backend = re.sub(r':[^@]+@', ':***@', backend)
     return f"<pre>BROKER: {masked_broker}\nBACKEND: {masked_backend}</pre>"
+
+
+@main_bp.route("/healthz")
+def healthz():
+    """
+    Health check endpoint: checks DB (SELECT 1), Redis ping, and ffmpeg presence.
+    Returns 200 JSON on success, 503 JSON on failure.
+    """
+    from flask import jsonify
+    import subprocess
+    status = {"db": "ok", "redis": "ok", "ffmpeg": "ok"}
+    healthy = True
+
+    try:
+        db.session.execute(db.text("SELECT 1"))
+    except Exception as e:
+        status["db"] = f"error: {e}"
+        healthy = False
+
+    try:
+        from redis import Redis
+        broker_url = current_app.config.get("CELERY_BROKER_URL", "redis://localhost:6379/0")
+        r = Redis.from_url(broker_url)
+        r.ping()
+    except Exception as e:
+        status["redis"] = f"error: {e}"
+        healthy = False
+
+    try:
+        subprocess.run(["ffmpeg", "-version"], capture_output=True, check=True)
+    except Exception as e:
+        status["ffmpeg"] = f"error: {e}"
+        healthy = False
+
+    code = 200 if healthy else 503
+    return jsonify(status), code

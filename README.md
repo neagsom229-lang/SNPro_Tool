@@ -323,6 +323,50 @@ No domain yet? Skip `DOMAIN` and Caddy serves plain HTTP on port 80
 instead — fine for quickly checking things from a phone, but keep
 `FORCE_HTTPS` unset in that case too.
 
+## Local Run on Windows
+
+1. **Prerequisites:** Python 3.10+, Redis (or Memurai on Windows, or Docker Redis), and FFmpeg (installed and added to system PATH).
+2. **Setup virtual environment:**
+   ```powershell
+   python -m venv venv
+   .\venv\Scripts\Activate.ps1
+   pip install -r requirements.txt
+   ```
+3. **Configure environment:**
+   Copy `.env.example` to `.env` and configure:
+   - `FLASK_SECRET_KEY`: your secret key
+   - `CELERY_BROKER_URL`: `redis://localhost:6379/0`
+   - `CELERY_RESULT_BACKEND`: `redis://localhost:6379/1`
+   - `FFMPEG_HWACCEL`: `cuda`, `vulkan`, or leave unset for CPU fallback (`libx264`)
+   - `JOB_RETENTION_DAYS`: `7` (default retention for old jobs & storage cleanup)
+   - `MAX_ACTIVE_JOBS_PER_USER`: `3` (max concurrent pending/running jobs per user)
+4. **Run Redis & Celery Worker:**
+   Start Redis (e.g. via Docker or Memurai). In a separate PowerShell terminal:
+   ```powershell
+   .\venv\Scripts\Activate.ps1
+   celery -A celery_worker.celery worker -B --loglevel=info -P solo -Q heavy,light
+   ```
+5. **Run Flask App:**
+   In another PowerShell terminal:
+   ```powershell
+   .\venv\Scripts\Activate.ps1
+   python run.py
+   ```
+   Visit `http://localhost:5000`.
+
+## Environment Variables Reference
+
+| Variable | Default | Description |
+|---|---|---|
+| `FLASK_SECRET_KEY` | `dev-secret-change-me` | Secret key for Flask sessions and CSRF protection (must be changed in production). |
+| `DATABASE_URL` | `sqlite:///instance/app.db` | SQLAlchemy database URI (SQLite by default; use Postgres URL for multi-service production deploys). |
+| `CELERY_BROKER_URL` | `redis://localhost:6379/0` | Celery message broker Redis URL. |
+| `CELERY_RESULT_BACKEND` | `redis://localhost:6379/1` | Celery result backend Redis URL. |
+| `STORAGE_ROOT` | `storage` | Root directory for user uploads and job outputs. |
+| `FFMPEG_HWACCEL` | `none` | Hardware acceleration mode for FFmpeg (`cuda`, `vulkan`, or empty for CPU). |
+| `JOB_RETENTION_DAYS` | `7` | Retention period in days for periodic Celery beat cleanup task. |
+| `MAX_ACTIVE_JOBS_PER_USER` | `3` | Maximum active (pending/running) jobs allowed per user simultaneously. |
+
 ## How each tool works
 
 | Tool | Route | Execution | Notes |

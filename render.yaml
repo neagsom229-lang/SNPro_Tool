@@ -4,11 +4,12 @@ services:
     env: python
     buildCommand: pip install -r requirements.txt
     startCommand: gunicorn run:app --bind 0.0.0.0:$PORT
+    healthCheckPath: /healthz
     envVars:
-      - key: SECRET_KEY
+      - key: FLASK_SECRET_KEY
         generateValue: true
       - key: DATABASE_URL
-        value: sqlite:///instance/app.db
+        value: sqlite:///instance/app.db  # NOTE: For multi-service production deploys, switch DATABASE_URL to a PostgreSQL connection string.
       - key: CELERY_BROKER_URL
         fromService:
           name: snpro-redis
@@ -21,17 +22,25 @@ services:
           property: connectionString
       - key: STORAGE_ROOT
         value: /var/data/storage
+      - key: JOB_RETENTION_DAYS
+        value: "7"
+      - key: MAX_ACTIVE_JOBS_PER_USER
+        value: "3"
+    disk:
+      name: snpro-disk
+      mountPath: /var/data
+      sizeGB: 10
 
   - type: worker
     name: snpro-worker
     env: python
     buildCommand: pip install -r requirements.txt
-    startCommand: celery -A celery_worker.celery worker --loglevel=info -P solo -Q celery,heavy
+    startCommand: celery -A celery_worker.celery worker -B --loglevel=info -P solo -Q heavy,light
     envVars:
-      - key: SECRET_KEY
+      - key: FLASK_SECRET_KEY
         generateValue: true
       - key: DATABASE_URL
-        value: sqlite:///instance/app.db
+        value: sqlite:///instance/app.db  # NOTE: Must match web service DATABASE_URL
       - key: CELERY_BROKER_URL
         fromService:
           name: snpro-redis
@@ -44,6 +53,14 @@ services:
           property: connectionString
       - key: STORAGE_ROOT
         value: /var/data/storage
+      - key: JOB_RETENTION_DAYS
+        value: "7"
+      - key: MAX_ACTIVE_JOBS_PER_USER
+        value: "3"
+    disk:
+      name: snpro-disk
+      mountPath: /var/data
+      sizeGB: 10
 
   - type: redis
     name: snpro-redis

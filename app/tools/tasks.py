@@ -67,16 +67,24 @@ from app.tools.video_helpers import extract_audio_from_video, replace_audio_in_v
 @shared_task(bind=True, autoretry_for=(Exception,), retry_backoff=True, max_retries=2)
 def task_download_video(self, job_id, url, mode, out_dir, download_playlist=False):
     import yt_dlp
+    import time
     from yt_dlp.utils import DownloadError
 
     _set(job_id, status="running", progress=1, message="Starting download...")
+
+    last_update_time = [0.0]
+    last_pct = [-1]
 
     def hook(d):
         if d.get("status") == "downloading":
             total = d.get("total_bytes") or d.get("total_bytes_estimate")
             downloaded = d.get("downloaded_bytes") or 0
             pct = int(downloaded / total * 100) if total else 0
-            _set(job_id, progress=max(1, min(99, pct)), message=f"Downloading... {pct}%")
+            now = time.time()
+            if pct != last_pct[0] and (now - last_update_time[0] >= 1.0 or pct >= last_pct[0] + 2 or pct == 99):
+                last_update_time[0] = now
+                last_pct[0] = pct
+                _set(job_id, progress=max(1, min(99, pct)), message=f"Downloading... {pct}%")
         elif d.get("status") == "finished":
             _set(job_id, progress=99, message="Processing / merging...")
 
@@ -1609,8 +1617,6 @@ def task_auto_edit_video(self, job_id, clip_paths, out_dir, template_name="cinem
             zip_outputs(files_to_zip, zip_path)
             result_path = zip_path
  
-        shutil.rmtree(work_dir, ignore_errors=True)  
- 
         job = _set(
             job_id, status="success", progress=100,
             message=f"Done - {template.get('name', template_name)} template, "
@@ -1630,4 +1636,62 @@ def task_auto_edit_video(self, job_id, clip_paths, out_dir, template_name="cinem
  
     except Exception as e:
         _set(job_id, status="failure", message=_friendly_error("Automated video editing failed", e))
+    finally:
+        shutil.rmtree(work_dir, ignore_errors=True)
+
+
+@shared_task(name="tools.cleanup_old_jobs")
+def cleanup_old_jobs(days: int = 7):
+    """
+    Periodic Celery beat task to clean up old job rows and their associated storage directories
+    (outputs and uploads) older than N days.
+    """
+    from datetime import datetime, timedelta, timezone
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    old_jobs = Job.query.filter(Job.created_at < cutoff).all()
+    storage_root = current_app.config["STORAGE_ROOT"]
+
+    deleted_count = 0
+    for job in old_jobs:
+        try:
+            out_dir = os.path.join(storage_root, "users", str(job.user_id), "outputs", str(job.tool), str(job.id))
+            if os.path.exists(out_dir):
+                shutil.rmtree(out_dir, ignore_errors=True)
+            up_dir = os.path.join(storage_root, "users", str(job.user_id), "uploads", str(job.tool), str(job.id))
+            if os.path.exists(up_dir):
+                shutil.rmtree(up_dir, ignore_errors=True)
+            db.session.delete(job)
+            deleted_count += 1
+        except Exception as e:
+            current_app.logger.error(f"Failed to cleanup job {job.id}: {e}")
+
+    if deleted_count > 0:
+        db.session.commit()
+        current_app.logger.info(f"Cleaned up {deleted_count} jobs and associated files older than {days} days.")
+
+
+@shared_task(name="tools.watchdog_stuck_jobs")
+def watchdog_stuck_jobs(max_age_seconds: int = 2200):
+    """
+    Celery beat task to mark jobs stuck in pending or running for longer than
+    task_time_limit + 5 minutes as failed due to worker crash or timeout.
+    """
+    from datetime import datetime, timedelta, timezone
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=max_age_seconds)
+    stuck_jobs = Job.query.filter(
+        Job.status.in_(["pending", "running"]),
+        Job.updated_at < cutoff
+    ).all()
+
+    count = 0
+    for job in stuck_jobs:
+        job.status = "failure"
+        job.message = "Job timed out or worker crashed"
+        job.error_message = "Job timed out or worker crashed"
+        count += 1
+
+    if count > 0:
+        db.session.commit()
+        current_app.logger.warning(f"Watchdog marked {count} stuck job(s) as failed.")
+
  

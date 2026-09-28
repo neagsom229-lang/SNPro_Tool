@@ -6,6 +6,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from celery import Celery, shared_task
 import ssl
+import os
 
 db = SQLAlchemy()
 migrate = Migrate()
@@ -52,6 +53,21 @@ def make_celery(app):
         # --- Recommended: retry broker connection at startup instead of crashing ---
         broker_connection_retry_on_startup=True,
     )
+
+    from celery.schedules import crontab
+    retention_days = int(os.environ.get("JOB_RETENTION_DAYS", 7))
+    celery.conf.beat_schedule = {
+        "cleanup-old-jobs-daily": {
+            "task": "tools.cleanup_old_jobs",
+            "schedule": crontab(hour=3, minute=0),
+            "args": (retention_days,),
+        },
+        "watchdog-stuck-jobs-hourly": {
+            "task": "tools.watchdog_stuck_jobs",
+            "schedule": crontab(minute=0),
+            "args": (2200,),
+        },
+    }
 
     # --- FIX: Configure SSL if using TLS (rediss://) ---
     # Upstash (and most cloud Redis providers) require TLS. Celery needs explicit
