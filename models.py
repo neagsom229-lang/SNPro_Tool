@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
 from extensions import db
@@ -11,8 +11,25 @@ class User(UserMixin, db.Model):
     username = db.Column(db.String(80), unique=True, nullable=False, index=True)
     email = db.Column(db.String(150), unique=True, nullable=False, index=True)
     password_hash = db.Column(db.String(255), nullable=False)
+    full_name = db.Column(db.String(120), nullable=True, default="")
     is_admin = db.Column(db.Boolean, default=False, nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    # Verification & Security fields
+    is_verified = db.Column(db.Boolean, default=False, nullable=False)
+    verification_token = db.Column(db.String(100), unique=True, nullable=True, index=True)
+    verification_token_expires = db.Column(db.DateTime, nullable=True)
+
+    # Password Reset fields
+    reset_password_token = db.Column(db.String(100), unique=True, nullable=True, index=True)
+    reset_password_expires = db.Column(db.DateTime, nullable=True)
+
+    # Brute-force protection & activity tracking
+    failed_login_attempts = db.Column(db.Integer, default=0, nullable=False)
+    locked_until = db.Column(db.DateTime, nullable=True)
+    last_login_at = db.Column(db.DateTime, nullable=True)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     jobs = db.relationship("Job", backref="user", lazy="dynamic", cascade="all, delete-orphan")
 
@@ -22,8 +39,14 @@ class User(UserMixin, db.Model):
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
 
+    @property
+    def is_locked(self):
+        if self.locked_until and self.locked_until > datetime.utcnow():
+            return True
+        return False
+
     def __repr__(self):
-        return f"<User {self.username}>"
+        return f"<User {self.username} (verified={self.is_verified})>"
 
 
 class Job(db.Model):
