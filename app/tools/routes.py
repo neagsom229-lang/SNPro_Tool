@@ -55,8 +55,11 @@ def _new_job(tool, label=""):
 
 def _active_job_limit_ok():
     limit = int(os.environ.get("MAX_ACTIVE_JOBS_PER_USER", 3))
-    active_count = Job.query.filter_by(user_id=current_user.id).filter(Job.status.in_(("pending", "running"))).count()
-    return active_count < limit
+    count = Job.query.filter(
+        Job.user_id == current_user.id,
+        Job.status.in_(("pending", "running"))
+    ).count()
+    return count < limit
 
 
 def _safe_redirect_url(url, fallback):
@@ -465,6 +468,9 @@ def audio_remover():
 @limiter.limit("6 per minute", methods=["POST"])
 def video_enhancer():
     if request.method == "POST":
+        if not _active_job_limit_ok():
+            flash("You already have N active jobs. Please wait for one to finish.", "warning")
+            return redirect(url_for("tools.video_enhancer"))
         file = request.files.get("video")
         target = request.form.get("target", "original")
         denoise = request.form.get("denoise", "off")
@@ -515,6 +521,9 @@ def speech_translator():
         )
 
     # POST: validate and process
+    if not _active_job_limit_ok():
+        flash("You already have N active jobs. Please wait for one to finish.", "warning")
+        return redirect(url_for("tools.speech_translator"))
     audio_file = request.files.get("audio_file")
     target_lang = request.form.get("target_lang")
     source_lang = request.form.get("source_lang") or None
@@ -689,6 +698,9 @@ _COMBINE_PDF_ALLOWED_EXT = IMAGE_EXTS | VIDEO_EXTS | TEXT_EXTS | PDF_EXTS
 @limiter.limit("10 per minute", methods=["POST"])
 def combine_pdf():
     if request.method == "POST":
+        if not _active_job_limit_ok():
+            flash("You already have N active jobs. Please wait for one to finish.", "warning")
+            return redirect(url_for("tools.combine_pdf"))
         files = request.files.getlist("files")
         files = [f for f in files if f and f.filename]
 
@@ -745,6 +757,9 @@ def combine_pdf():
 @limiter.limit("6 per minute", methods=["POST"])
 def video_speech_translator():
     if request.method == "POST":
+        if not _active_job_limit_ok():
+            flash("You already have N active jobs. Please wait for one to finish.", "warning")
+            return redirect(url_for("tools.video_speech_translator"))
         file = request.files.get("video")
         target_lang = request.form.get("target_lang")
         source_lang = request.form.get("source_lang") or None
@@ -843,6 +858,9 @@ def _load_template_choices():
 @limiter.limit("4 per minute", methods=["POST"])
 def auto_edit_video():
     if request.method == "POST":
+        if not _active_job_limit_ok():
+            flash("You already have N active jobs. Please wait for one to finish.", "warning")
+            return redirect(url_for("tools.auto_edit_video"))
         files = request.files.getlist("clips")
         files = [f for f in files if f and f.filename]
 

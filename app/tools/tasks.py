@@ -1666,14 +1666,14 @@ def cleanup_old_jobs(days: int = 7):
                                 if mtime < cutoff:
                                     os.remove(fpath)
                             except Exception as e:
-                                current_app.logger.warning(f"Failed to process file {fpath}: {e}")
+                                current_app.logger.warning(f"cleanup failed for {fpath}: {e}")
                         for d in dirs:
                             dpath = os.path.join(root, d)
                             try:
                                 if not os.listdir(dpath):
                                     os.rmdir(dpath)
                             except Exception as e:
-                                current_app.logger.warning(f"Failed to remove directory {dpath}: {e}")
+                                current_app.logger.warning(f"cleanup failed for {dpath}: {e}")
 
     # Delete expired Job rows in batches of 100 and only for status in (success, failure)
     deleted_count = 0

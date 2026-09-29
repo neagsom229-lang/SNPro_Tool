@@ -99,7 +99,6 @@ def transcribe_audio(audio_path: str, lang_code: Optional[str] = None) -> dict:
     Returns dict with keys: text, detected_lang, duration_seconds.
     """
     import subprocess
-    import json
 
     duration_seconds = 0.0
     try:
@@ -107,12 +106,11 @@ def transcribe_audio(audio_path: str, lang_code: Optional[str] = None) -> dict:
             "ffprobe",
             "-v", "error",
             "-show_entries", "format=duration",
-            "-of", "json",
+            "-of", "csv=p=0",
             audio_path
         ]
         res = subprocess.run(cmd, capture_output=True, text=True, timeout=30, check=True)
-        data = json.loads(res.stdout)
-        duration_seconds = float(data["format"]["duration"])
+        duration_seconds = float(res.stdout.strip())
     except Exception:
         logger.warning("ffprobe failed to get duration for %s, falling back to librosa", audio_path, exc_info=True)
         try:
