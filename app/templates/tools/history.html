@@ -6,61 +6,65 @@
 {% block title %}History — SNPro{% endblock %}
 {% block content %}
 
-<div class="d-flex justify-content-between align-items-end mb-4 flex-wrap gap-2">
-  <div>
-    <div class="hero-index">HISTORY</div>
-    <h1 class="h3 mb-0">Your jobs</h1>
+<div class="container py-4">
+  <div class="d-flex justify-content-between align-items-end mb-4 flex-wrap gap-2">
+    <div>
+      <div class="hero-index">HISTORY</div>
+      <h1 class="h3 mb-0">Your jobs</h1>
+    </div>
+    <div class="btn-group btn-group-sm" role="group" aria-label="Filter job status">
+      <a href="{{ url_for('tools.history') }}" class="btn btn-outline-snpro {{ 'active' if not status_filter }}">All</a>
+      <a href="{{ url_for('tools.history', status='success') }}" class="btn btn-outline-snpro {{ 'active' if status_filter == 'success' }}">Success</a>
+      <a href="{{ url_for('tools.history', status='failure') }}" class="btn btn-outline-snpro {{ 'active' if status_filter == 'failure' }}">Failed</a>
+      <a href="{{ url_for('tools.history', status='pending') }}" class="btn btn-outline-snpro {{ 'active' if status_filter == 'pending' }}">Pending</a>
+    </div>
   </div>
-  <div class="btn-group btn-group-sm" role="group">
-    <a href="{{ url_for('tools.history') }}" class="btn btn-outline-secondary {{ 'active' if not status_filter }}">All</a>
-    <a href="{{ url_for('tools.history', status='success') }}" class="btn btn-outline-secondary {{ 'active' if status_filter == 'success' }}">Success</a>
-    <a href="{{ url_for('tools.history', status='failure') }}" class="btn btn-outline-secondary {{ 'active' if status_filter == 'failure' }}">Failed</a>
-    <a href="{{ url_for('tools.history', status='pending') }}" class="btn btn-outline-secondary {{ 'active' if status_filter == 'pending' }}">Pending</a>
-  </div>
-</div>
 
-<div class="card-snpro p-4">
-  {% if pagination.items %}
-    {% for job in pagination.items %}
-      <div class="job-row">
-        <div>
-          <a href="{{ url_for('tools.job_view', job_id=job.id) }}" class="text-decoration-none">
-            <strong>{{ job.tool.replace('_', ' ')|title }}</strong>
-          </a>
-          <div class="text-body-secondary small">{{ job.input_label or '—' }} · {{ job.created_at.strftime('%Y-%m-%d %H:%M') }} UTC</div>
-        </div>
-        <div class="d-flex align-items-center gap-2">
-          <span class="status-pill {{ job.status }}">{{ job.status }}</span>
-          {% if job.status == 'success' and job.result_path %}
-            <a href="{{ url_for('tools.job_download', job_id=job.id) }}" class="btn btn-sm btn-outline-secondary">
-              <i class="bi bi-download"></i>
+  <div class="card-snpro p-4">
+    {% if pagination.items %}
+      {% for job in pagination.items %}
+        <div class="job-row">
+          <div>
+            <a href="{{ url_for('tools.job_view', job_id=job.id) }}" class="text-decoration-none">
+              <strong>{{ job.tool.replace('_', ' ')|title }}</strong>
             </a>
-          {% endif %}
-          <form method="post" action="{{ url_for('tools.job_delete', job_id=job.id) }}"
-                onsubmit="return confirm('Delete this job and its files?');">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" class="btn btn-sm btn-outline-danger">
-              <i class="bi bi-trash"></i>
-            </button>
-          </form>
+            <div class="text-body-secondary small">{{ job.input_label or '—' }} · {{ job.created_at.strftime('%Y-%m-%d %H:%M') }} UTC</div>
+          </div>
+          <div class="d-flex align-items-center gap-2">
+            <span class="status-pill {{ job.status }}">{{ job.status }}</span>
+            {% if job.status == 'success' and job.result_path %}
+              <a href="{{ url_for('tools.job_download', job_id=job.id) }}" class="btn btn-sm btn-outline-snpro" title="Download result">
+                <i class="bi bi-download" aria-hidden="true"></i>
+              </a>
+            {% endif %}
+            <form method="post" action="{{ url_for('tools.job_delete', job_id=job.id) }}"
+                  onsubmit="return confirm('Delete this job and its files?');">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete job">
+                <i class="bi bi-trash" aria-hidden="true"></i>
+              </button>
+            </form>
+          </div>
         </div>
-      </div>
-    {% endfor %}
+      {% endfor %}
 
-    <nav class="mt-4">
-      <ul class="pagination pagination-sm justify-content-center mb-0">
-        <li class="page-item {{ 'disabled' if not pagination.has_prev }}">
-          <a class="page-link" href="{{ url_for('tools.history', page=pagination.prev_num, status=status_filter) }}">Prev</a>
-        </li>
-        <li class="page-item disabled"><span class="page-link">{{ pagination.page }} / {{ pagination.pages or 1 }}</span></li>
-        <li class="page-item {{ 'disabled' if not pagination.has_next }}">
-          <a class="page-link" href="{{ url_for('tools.history', page=pagination.next_num, status=status_filter) }}">Next</a>
-        </li>
-      </ul>
-    </nav>
-  {% else %}
-    <p class="text-body-secondary mb-0">No jobs match this filter.</p>
-  {% endif %}
+      <nav class="mt-4" aria-label="History Pagination">
+        <ul class="pagination pagination-sm justify-content-center mb-0">
+          <li class="page-item {{ 'disabled' if not pagination.has_prev }}">
+            <a class="page-link" href="{{ url_for('tools.history', page=pagination.prev_num, status=status_filter) }}">Prev</a>
+          </li>
+          <li class="page-item disabled"><span class="page-link">{{ pagination.page }} / {{ pagination.pages or 1 }}</span></li>
+          <li class="page-item {{ 'disabled' if not pagination.has_next }}">
+            <a class="page-link" href="{{ url_for('tools.history', page=pagination.next_num, status=status_filter) }}">Next</a>
+          </li>
+        </ul>
+      </nav>
+    {% else %}
+      <div class="text-center py-4">
+        <p class="text-body-secondary mb-0">No jobs match this filter.</p>
+      </div>
+    {% endif %}
+  </div>
 </div>
 
 {% endblock %}

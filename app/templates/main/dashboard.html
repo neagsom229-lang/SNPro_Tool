@@ -7,7 +7,7 @@
 {% endblock %}
 
 {% block content %}
-<div class="container py-4">
+<div class="container py-4" id="dashboardRoot">
   <!-- Welcome Section -->
   <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-4" data-aos="fade-up">
     <div>
@@ -16,11 +16,11 @@
     </div>
     <div class="d-flex gap-2">
       <a href="{{ url_for('tools.history') }}" class="btn btn-outline-snpro btn-sm">
-        <i class="bi bi-clock-history me-1"></i> History
+        <i class="bi bi-clock-history me-1" aria-hidden="true"></i> History
       </a>
       {% if current_user.is_admin %}
       <a href="{{ url_for('admin.dashboard') }}" class="btn btn-outline-snpro btn-sm">
-        <i class="bi bi-shield-lock me-1"></i> Admin
+        <i class="bi bi-shield-lock me-1" aria-hidden="true"></i> Admin
       </a>
       {% endif %}
     </div>
@@ -54,19 +54,14 @@
     </div>
   </div>
 
-  <!-- Quick Actions: personalized to the tools this user actually uses,
-       falling back to the first 4 tools in the catalog only for a brand
-       new account with no job history yet (quick_action_tools will be
-       unset/empty in that case, or if this template is rendered by an
-       older version of the dashboard() route that hasn't been updated to
-       pass it - so this degrades gracefully either way). -->
+  <!-- Quick Actions -->
   {% set quick_tools = quick_action_tools if quick_action_tools else tools[:4] %}
   <div class="row g-3 mb-5" data-aos="fade-up" data-aos-delay="200">
     <div class="col-12 d-flex align-items-center gap-2">
       <h3 class="h5 display-font mb-0">Quick Actions</h3>
       {% if quick_action_tools %}
         <span class="status-pill success" title="Based on your most-used tools">
-          <i class="bi bi-stars"></i> Personalized
+          <i class="bi bi-stars" aria-hidden="true"></i> Personalized
         </span>
       {% endif %}
     </div>
@@ -74,27 +69,55 @@
     <div class="col-6 col-md-3">
       <a href="{{ url_for('tools.tool_page', slug=tool.slug) }}" class="tool-tile text-center p-3">
         {% if tool.ai %}<span class="ai-badge">AI</span>{% endif %}
-        <div class="tool-icon mx-auto"><i class="bi {{ tool.icon }}"></i></div>
+        <div class="tool-icon mx-auto"><i class="bi {{ tool.icon }}" aria-hidden="true"></i></div>
         <h6 class="mt-2">{{ tool.name }}</h6>
       </a>
     </div>
     {% endfor %}
   </div>
 
-  <!-- All Tools Grid -->
+  <!-- Search & Category Filtering for Tools -->
+  <div class="mb-4" data-aos="fade-up" data-aos-delay="250">
+    <div class="row align-items-center g-3">
+      <div class="col-md-6">
+        <label for="toolSearch" class="visually-hidden">Search tools</label>
+        <div class="input-group">
+          <span class="input-group-text bg-transparent"><i class="bi bi-search" aria-hidden="true"></i></span>
+          <input type="text" id="toolSearch" class="form-control" placeholder="Search tools (e.g. video, pdf, ai)..." aria-label="Search tools">
+        </div>
+      </div>
+      <div class="col-md-6">
+        <div class="d-flex flex-wrap gap-2 justify-content-md-end" role="group" aria-label="Tool Categories">
+          <button type="button" class="btn btn-sm btn-outline-snpro category-btn active" data-category="all">All</button>
+          <button type="button" class="btn btn-sm btn-outline-snpro category-btn" data-category="video">Video</button>
+          <button type="button" class="btn btn-sm btn-outline-snpro category-btn" data-category="audio">Audio</button>
+          <button type="button" class="btn btn-sm btn-outline-snpro category-btn" data-category="document">Document</button>
+          <button type="button" class="btn btn-sm btn-outline-snpro category-btn" data-category="image">Image</button>
+          <button type="button" class="btn btn-sm btn-outline-snpro category-btn" data-category="ai">AI</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- All Tools Grid Grouped / Filterable -->
   <div data-aos="fade-up" data-aos-delay="300">
     <h3 class="h5 display-font mb-3">All Tools</h3>
-    <div class="row g-3">
+    <div id="toolsGrid" class="row g-3">
       {% for tool in tools %}
-      <div class="col-sm-6 col-lg-4">
-        <a href="{{ url_for('tools.tool_page', slug=tool.slug) }}" class="tool-tile">
+      {% set slug = tool.slug %}
+      {% set cat = 'video' if slug in ['video-downloader', 'video-to-frames', 'images-to-video', 'video-enhancer', 'video-speech-translator', 'auto-edit-video'] else ('audio' if slug in ['speech-to-text', 'text-to-speech', 'audio-remover', 'speech-translator'] else ('document' if slug in ['pdf-to-word', 'combine-pdf'] else 'image')) %}
+      <div class="col-sm-6 col-lg-4 tool-item" data-name="{{ tool.name | lower }}" data-desc="{{ tool.desc | lower }}" data-category="{{ cat }}" data-ai="{{ 'true' if tool.ai else 'false' }}">
+        <a href="{{ url_for('tools.tool_page', slug=tool.slug) }}" class="tool-tile h-100">
           {% if tool.ai %}<span class="ai-badge">AI</span>{% endif %}
-          <div class="tool-icon"><i class="bi {{ tool.icon }}"></i></div>
+          <div class="tool-icon"><i class="bi {{ tool.icon }}" aria-hidden="true"></i></div>
           <h3>{{ tool.name }}</h3>
           <p>{{ tool.desc }}</p>
         </a>
       </div>
       {% endfor %}
+    </div>
+    <div id="noToolsFound" class="text-center py-5 d-none">
+      <p class="text-body-secondary">No tools match your search.</p>
     </div>
   </div>
 
@@ -114,9 +137,9 @@
           <div class="text-body-secondary small">{{ job.input_label or '—' }}</div>
         </div>
         <span class="status-pill {{ job.status }}">
-          {% if job.status == 'success' %}<i class="bi bi-check-circle-fill me-1"></i>Done
-          {% elif job.status == 'failure' %}<i class="bi bi-exclamation-octagon-fill me-1"></i>Failed
-          {% else %}<i class="bi bi-arrow-repeat me-1"></i>Running
+          {% if job.status == 'success' %}<i class="bi bi-check-circle-fill me-1" aria-hidden="true"></i>Done
+          {% elif job.status == 'failure' %}<i class="bi bi-exclamation-octagon-fill me-1" aria-hidden="true"></i>Failed
+          {% else %}<i class="bi bi-arrow-repeat me-1" aria-hidden="true"></i>Running
           {% endif %}
         </span>
       </div>
@@ -129,37 +152,5 @@
 {% endblock %}
 
 {% block extra_scripts %}
-{# Animated counters script #}
-<script nonce="{{ csp_nonce }}">
-  document.addEventListener('DOMContentLoaded', () => {
-    const counters = document.querySelectorAll('.stat-number');
-    const observer = new IntersectionObserver((entries) => {
-      entries.forEach(entry => {
-        if (entry.isIntersecting) {
-          const target = parseFloat(entry.target.dataset.target);
-          const suffix = entry.target.dataset.suffix || '';
-          animateCounter(entry.target, target, suffix);
-          observer.unobserve(entry.target);
-        }
-      });
-    }, { threshold: 0.3 });
-
-    counters.forEach(c => observer.observe(c));
-
-    function animateCounter(el, target, suffix) {
-      if (!target) { el.textContent = '0' + suffix; return; }
-      let current = 0;
-      const step = target / 30;
-      const timer = setInterval(() => {
-        current += step;
-        if (current >= target) {
-          el.textContent = target + suffix;
-          clearInterval(timer);
-        } else {
-          el.textContent = Math.floor(current) + suffix;
-        }
-      }, 30);
-    }
-  });
-</script>
+<script nonce="{{ csp_nonce }}" src="{{ static_url('js/dashboard-filter.js') }}"></script>
 {% endblock %}
