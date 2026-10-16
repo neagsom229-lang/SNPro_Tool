@@ -374,3 +374,23 @@ def test_job_events_streaming_without_persistent_client_context(client, auth_cli
     assert data is not None
 
 
+def test_sse_slot_release_on_early_close(client, auth_client, app):
+    from app.tools.routes import _ACTIVE_SSE_STREAMS
+    initial_streams = _ACTIVE_SSE_STREAMS
+
+    with app.app_context():
+        user = User.query.filter_by(username="e2e_user").first()
+        job = Job(user_id=user.id, tool="qr_code", status="pending", progress=0)
+        db.session.add(job)
+        db.session.commit()
+        job_id = job.id
+
+    res = auth_client.get(f"/tools/job/{job_id}/events", buffered=False)
+    assert res.status_code == 200
+    res.close()
+
+    from app.tools.routes import _ACTIVE_SSE_STREAMS
+    assert _ACTIVE_SSE_STREAMS == initial_streams
+
+
+

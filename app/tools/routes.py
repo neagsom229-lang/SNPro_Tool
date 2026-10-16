@@ -618,11 +618,18 @@ def job_events(job_id):
             return Response("Too many concurrent streams", status=429, headers={"Retry-After": "5"})
         _ACTIVE_SSE_STREAMS += 1
 
+    released = [False]
+    def release_slot():
+        with _SSE_LOCK:
+            if not released[0]:
+                released[0] = True
+                global _ACTIVE_SSE_STREAMS
+                _ACTIVE_SSE_STREAMS = max(0, _ACTIVE_SSE_STREAMS - 1)
+
     app_obj = current_app._get_current_object()
 
     @stream_with_context
     def generate():
-        global _ACTIVE_SSE_STREAMS
         with app_obj.app_context():
             try:
                 import time
@@ -663,15 +670,15 @@ def job_events(job_id):
                     time.sleep(1.0)
             finally:
                 db.session.remove()
-                with _SSE_LOCK:
-                    _ACTIVE_SSE_STREAMS = max(0, _ACTIVE_SSE_STREAMS - 1)
+                release_slot()
 
-    headers = {
+    response = Response(generate(), mimetype="text/event-stream", headers={
         "Cache-Control": "no-cache",
         "X-Accel-Buffering": "no",
         "Connection": "keep-alive"
-    }
-    return Response(generate(), mimetype="text/event-stream", headers=headers)
+    })
+    response.call_on_close(release_slot)
+    return response
 
 
 @tools_bp.route("/job/<int:job_id>/download")
