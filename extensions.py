@@ -4,7 +4,7 @@ from flask_wtf import CSRFProtect
 from flask_migrate import Migrate
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
-from celery import Celery, shared_task
+from celery import Celery
 import ssl
 import os
 

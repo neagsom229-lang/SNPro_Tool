@@ -1,0 +1,88 @@
+/**
+ * components.css — Reusable UI Components for SNPro
+ */
+
+.btn-accent {
+  background-color: var(--accent);
+  color: var(--ink-900);
+  border: 1px solid var(--accent);
+  font-weight: 600;
+  transition: all var(--dur-fast);
+}
+
+.btn-accent:hover {
+  background-color: var(--accent-strong);
+  border-color: var(--accent-strong);
+  color: var(--ink-900);
+  transform: translateY(-1px);
+}
+
+.btn-outline-snpro {
+  color: var(--text);
+  border: 1px solid var(--border);
+  background-color: var(--surface);
+  transition: all var(--dur-fast);
+}
+
+.btn-outline-snpro:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background-color: var(--accent-subtle);
+}
+
+.card-snpro {
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow var(--dur-norm), border-color var(--dur-norm);
+}
+
+.card-snpro:hover {
+  box-shadow: var(--shadow-md);
+  border-color: var(--accent);
+}
+
+.dropzone-box {
+  border: 2px dashed var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-2);
+  padding: var(--space-5);
+  text-align: center;
+  transition: border-color var(--dur-fast), background var(--dur-fast);
+  cursor: pointer;
+}
+
+.dropzone-box:hover, .dropzone-box.dragover {
+  border-color: var(--accent);
+  background: var(--accent-subtle);
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0.25rem 0.75rem;
+  border-radius: var(--radius-full);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.status-pending { background: rgba(255, 193, 7, 0.15); color: #ffc107; }
+.status-running { background: rgba(13, 110, 253, 0.15); color: #0d6efd; }
+.status-success { background: rgba(25, 135, 84, 0.15); color: #198754; }
+.status-failure { background: rgba(220, 53, 69, 0.15); color: #dc3545; }
+
+.skeleton {
+  background: linear-gradient(90deg, var(--surface-2) 25%, var(--border) 50%, var(--surface-2) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: var(--radius-sm);
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}

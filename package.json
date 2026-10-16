@@ -1,0 +1,11 @@
+{
+  "name": "snpro-system",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build:3d": "npx esbuild app/static/js/3d/hero.js --bundle --minify --format=esm --outfile=app/static/vendor/three/hero.bundle.min.js --alias:three=./app/static/vendor/three/three.module.js"
+  },
+  "devDependencies": {
+    "esbuild": "0.23.0"
+  }
+}

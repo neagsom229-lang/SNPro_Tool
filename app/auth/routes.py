@@ -1,6 +1,6 @@
-from datetime import datetime, timedelta
+from datetime import timedelta
 import secrets
-from flask import Blueprint, render_template, redirect, url_for, flash, request
+from flask import Blueprint, render_template, redirect, url_for, flash, request, current_app
 from flask_login import login_user, logout_user, login_required, current_user
 from sqlalchemy import or_
 from urllib.parse import urlparse
@@ -8,6 +8,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 from extensions import db, limiter
 from models import User
+from utils import utcnow, ensure_utc
 from app.auth.forms import RegisterForm, LoginForm, ForgotPasswordForm, ResetPasswordForm
 from app.auth.email import send_async_email
 
@@ -41,7 +42,7 @@ def register():
             flash("Username or email already taken.", "danger")
         else:
             token = secrets.token_urlsafe(32)
-            token_expires = datetime.utcnow() + timedelta(hours=24)
+            token_expires = utcnow() + timedelta(hours=24)
 
             user = User(
                 username=form.username.data.strip(),
@@ -82,7 +83,7 @@ def verify_email(token):
         return redirect(url_for("main.dashboard"))
 
     user = User.query.filter_by(verification_token=token).first()
-    if not user or not user.verification_token_expires or user.verification_token_expires < datetime.utcnow():
+    if not user or not user.verification_token_expires or ensure_utc(user.verification_token_expires) < utcnow():
         flash("Invalid or expired verification link.", "danger")
         return redirect(url_for("auth.login"))
 
@@ -108,7 +109,7 @@ def login():
 
         # Check account lockout
         if user and user.is_locked:
-            remaining_mins = int((user.locked_until - datetime.utcnow()).total_seconds() / 60) + 1
+            remaining_mins = int((ensure_utc(user.locked_until) - utcnow()).total_seconds() / 60) + 1
             flash(f"Account is temporarily locked due to multiple failed login attempts. Please try again in {remaining_mins} minutes.", "danger")
             return render_template("auth/login.html", form=form)
 
@@ -127,7 +128,7 @@ def login():
             # Reset failed attempts & update last login
             user.failed_login_attempts = 0
             user.locked_until = None
-            user.last_login_at = datetime.utcnow()
+            user.last_login_at = utcnow()
             db.session.commit()
 
             login_user(user, remember=form.remember.data)
@@ -139,7 +140,7 @@ def login():
             if user:
                 user.failed_login_attempts += 1
                 if user.failed_login_attempts >= 5:
-                    user.locked_until = datetime.utcnow() + timedelta(minutes=15)
+                    user.locked_until = utcnow() + timedelta(minutes=15)
                     db.session.commit()
                     flash("Too many failed login attempts. Your account has been locked for 15 minutes.", "danger")
                 else:
@@ -166,7 +167,7 @@ def forgot_password():
         if user:
             token = secrets.token_urlsafe(32)
             user.reset_password_token = token
-            user.reset_password_expires = datetime.utcnow() + timedelta(hours=1)
+            user.reset_password_expires = utcnow() + timedelta(hours=1)
             db.session.commit()
 
             reset_url = url_for("auth.reset_password", token=token, _external=True)
@@ -177,7 +178,7 @@ def forgot_password():
                     template_name="reset_password",
                     context={"username": user.username, "reset_url": reset_url}
                 )
-            except Exception as e:
+            except Exception:
                 pass
 
         flash("If an account with that email exists, a password reset link has been sent.", "info")
@@ -193,7 +194,7 @@ def reset_password(token):
         return redirect(url_for("main.dashboard"))
 
     user = User.query.filter_by(reset_password_token=token).first()
-    if not user or not user.reset_password_expires or user.reset_password_expires < datetime.utcnow():
+    if not user or not user.reset_password_expires or ensure_utc(user.reset_password_expires) < utcnow():
         flash("Invalid or expired password reset link.", "danger")
         return redirect(url_for("auth.login"))
 

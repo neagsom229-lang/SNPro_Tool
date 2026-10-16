@@ -1,0 +1,19 @@
+/**
+ * tool.css — Individual Tool Pages Layout & Styling
+ */
+.tool-container {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.tool-header {
+  margin-bottom: var(--space-5);
+}
+
+.tool-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  box-shadow: var(--shadow-sm);
+}

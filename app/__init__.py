@@ -1,5 +1,5 @@
 import os
-from flask import Flask
+from flask import Flask, g, request, url_for
 from werkzeug.middleware.proxy_fix import ProxyFix
 from config import Config, BASE_DIR
 from extensions import db, login_manager, csrf, migrate, limiter, make_celery
@@ -32,7 +32,56 @@ def create_app(config_class=Config):
 
     @login_manager.user_loader
     def load_user(user_id):
-        return User.query.get(int(user_id))
+        return db.session.get(User, int(user_id))
+
+    import secrets
+
+    @app.before_request
+    def before_request():
+        g.csp_nonce = secrets.token_hex(16)
+
+    @app.after_request
+    def add_security_headers(response):
+        nonce = getattr(g, "csp_nonce", "")
+        csp = (
+            "default-src 'self'; "
+            f"script-src 'self' 'nonce-{nonce}' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; "
+            f"style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com; "
+            f"font-src 'self' data: https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.gstatic.com; "
+            f"img-src 'self' data: blob: https:; "
+            f"connect-src 'self' https://cdn.jsdelivr.net; "
+            f"media-src 'self' blob: data:; "
+            f"object-src 'none';"
+        )
+        response.headers["Content-Security-Policy"] = csp
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "SAMEORIGIN"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        if app.config.get("SESSION_COOKIE_SECURE"):
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+
+        # Cache-Control handling for dev vs production static files
+        path = request.path
+        if app.config.get("DEBUG"):
+            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        elif path.startswith('/static/'):
+            if 'v=' in request.query_string.decode('utf-8'):
+                response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+            else:
+                response.headers["Cache-Control"] = "public, max-age=3600"
+
+        return response
+
+    @app.context_processor
+    def utility_processor():
+        def static_url(filename):
+            file_path = os.path.join(app.static_folder, filename)
+            v = ""
+            if os.path.exists(file_path):
+                v = str(int(os.path.getmtime(file_path)))
+            return url_for('static', filename=filename) + (f"?v={v}" if v else "")
+        return {"csp_nonce": getattr(g, "csp_nonce", ""), "static_url": static_url}
 
     # Register blueprints (imported after Celery init)
     from app.auth.routes import auth_bp

@@ -130,5 +130,4 @@ websockets==17.1
 Werkzeug==3.0.3
 wrapt==2.4.0
 WTForms==3.1.2
-youtube-dl==2021.12.17
 yt-dlp==2026.8.30.232658.dev0

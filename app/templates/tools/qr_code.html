@@ -1,4 +1,8 @@
 {% extends "base.html" %}
+
+{% block extra_head %}
+  <link rel="stylesheet" href="{{ static_url('css/pages/tool.css') }}">
+{% endblock %}
 {% block title %}QR Code Generator — SNPro{% endblock %}
 
 {% block content %}
@@ -62,7 +66,7 @@
 
 {% block extra_scripts %}
 {{ super() }}
-<script>
+<script nonce="{{ csp_nonce }}">
 (function () {
   // --- Keyboard-accessible dropzones + visible "file selected" confirmation ---
   document.querySelectorAll('.upload-dropzone[data-for]').forEach(function (zone) {

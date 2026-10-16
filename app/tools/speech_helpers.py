@@ -240,7 +240,6 @@ _NLLB_LANG_MAP = {
 def _translate_with_nllb(text: str, target_lang: str, source_lang: Optional[str]) -> str:
     global _nllb_model, _nllb_tokenizer
     from transformers import AutoModelForSeq2SeqLM, AutoTokenizer # type: ignore
-    import torch
 
     if _nllb_model is None:
         model_name = "facebook/nllb-200-distilled-600M"

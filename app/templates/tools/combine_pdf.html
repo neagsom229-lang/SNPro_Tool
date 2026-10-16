@@ -1,4 +1,8 @@
 {% extends "base.html" %}
+
+{% block extra_head %}
+  <link rel="stylesheet" href="{{ static_url('css/pages/tool.css') }}">
+{% endblock %}
 {% block title %}Combine to PDF · SNPro{% endblock %}
 
 {% block content %}
@@ -206,7 +210,7 @@
 
 {% block extra_scripts %}
 {{ super() }}
-<script>
+<script nonce="{{ csp_nonce }}">
 document.addEventListener("DOMContentLoaded", function() {
   const dropzone = document.getElementById("combine-dropzone");
   const fileInput = document.getElementById("file-input");

@@ -4,7 +4,14 @@
 	# certbot commands needed. For local-only testing without a domain,
 	# leave DOMAIN unset and Caddy serves plain http on :80 instead.
 
-	reverse_proxy web:5000
+	@sse path /tools/job/*/events
+	@not_sse not path /tools/job/*/events
+
+	encode @not_sse zstd gzip
+
+	reverse_proxy web:5000 {
+		flush_interval -1
+	}
 
 	# Match Flask's own MAX_CONTENT_LENGTH_MB (default 500MB) so large
 	# video uploads aren't rejected by the proxy before Flask ever sees
@@ -20,5 +27,8 @@
 		read_header 30s
 	}
 
-	encode gzip
+	@static {
+		path /static/*
+	}
+	header @static Cache-Control "public, max-age=31536000, immutable"
 }

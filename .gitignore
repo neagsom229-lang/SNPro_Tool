@@ -10,3 +10,5 @@ storage_exports/
 *.log
 .DS_Store
 /test_*.mp3
+node_modules/
+.pytest_cache/

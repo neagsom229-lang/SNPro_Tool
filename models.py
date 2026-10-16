@@ -1,7 +1,7 @@
-from datetime import datetime, timedelta
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
 from extensions import db
+from utils import utcnow, ensure_utc
 
 
 class User(UserMixin, db.Model):
@@ -28,8 +28,8 @@ class User(UserMixin, db.Model):
     locked_until = db.Column(db.DateTime, nullable=True)
     last_login_at = db.Column(db.DateTime, nullable=True)
 
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=utcnow, onupdate=utcnow, nullable=False)
 
     jobs = db.relationship("Job", backref="user", lazy="dynamic", cascade="all, delete-orphan")
 
@@ -41,7 +41,7 @@ class User(UserMixin, db.Model):
 
     @property
     def is_locked(self):
-        if self.locked_until and self.locked_until > datetime.utcnow():
+        if self.locked_until and ensure_utc(self.locked_until) > utcnow():
             return True
         return False
 
@@ -66,8 +66,8 @@ class Job(db.Model):
     input_label = db.Column(db.String(300), default="")
     result_path = db.Column(db.String(500))  # relative path under STORAGE_ROOT
 
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=utcnow)
+    updated_at = db.Column(db.DateTime, default=utcnow, onupdate=utcnow)
     stage = db.Column(db.String(50), default="")
     result_meta = db.Column(db.JSON, default=dict)          # fixed mutable default
     error_message = db.Column(db.String(500), default="")

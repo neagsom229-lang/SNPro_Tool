@@ -2,6 +2,10 @@
 
 {% block title %}Dashboard — SNPro{% endblock %}
 
+{% block extra_head %}
+  <link rel="stylesheet" href="{{ static_url('css/pages/dashboard.css') }}">
+{% endblock %}
+
 {% block content %}
 <div class="container py-4">
   <!-- Welcome Section -->
@@ -126,7 +130,7 @@
 
 {% block extra_scripts %}
 {# Animated counters script #}
-<script>
+<script nonce="{{ csp_nonce }}">
   document.addEventListener('DOMContentLoaded', () => {
     const counters = document.querySelectorAll('.stat-number');
     const observer = new IntersectionObserver((entries) => {

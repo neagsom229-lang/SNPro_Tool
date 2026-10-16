@@ -2,11 +2,10 @@ import os
 import ast
 import inspect
 import pytest
-from flask import url_for
 from app import create_app
 from extensions import db
 import extensions
-from models import User, Job
+from models import User
 from app.tools import tasks
 
 

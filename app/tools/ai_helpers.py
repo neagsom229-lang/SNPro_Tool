@@ -24,7 +24,6 @@ New environment variables:
 """
 
 import os
-import functools
 import traceback
 
 # ---------------------------------------------------------------------------

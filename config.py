@@ -7,6 +7,7 @@ load_dotenv(os.path.join(BASE_DIR, ".env"))
 
 class Config:
     SECRET_KEY = os.environ.get("FLASK_SECRET_KEY", "dev-secret-change-me")
+    SEND_FILE_MAX_AGE_DEFAULT = 31536000
 
     # ---- Security: CSRF ----
     WTF_CSRF_ENABLED = os.environ.get("WTF_CSRF_ENABLED", "true").lower() in ("1", "true", "yes")
@@ -51,7 +52,14 @@ class Config:
     MAX_CONTENT_LENGTH = int(os.environ.get("MAX_CONTENT_LENGTH_MB", 500)) * 1024 * 1024
 
     # ---- Rate limiting ----
-    RATELIMIT_STORAGE_URI = os.environ.get("RATELIMIT_STORAGE_URI", "memory://")
+    _redis_url = os.environ.get("REDIS_URL", os.environ.get("CELERY_BROKER_URL", ""))
+    RATELIMIT_STORAGE_URI = os.environ.get(
+        "RATELIMIT_STORAGE_URI",
+        _redis_url if _redis_url and "localhost" not in _redis_url else os.environ.get("RATELIMIT_STORAGE_URI", "memory://")
+    )
+    if not RATELIMIT_STORAGE_URI or RATELIMIT_STORAGE_URI == "memory://":
+        if _redis_url:
+            RATELIMIT_STORAGE_URI = _redis_url
     RATELIMIT_DEFAULT = "200 per hour"
 
     # ---- Allowed file extensions (used by _ext_ok) ----

@@ -2,6 +2,7 @@
 <html lang="en" data-theme="{{ theme | default('light') }}">
 <head>
   <meta charset="UTF-8">
+  <script nonce="{{ csp_nonce }}">document.documentElement.classList.add('js');</script>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}SNPro — All-in-one media toolkit{% endblock %}</title>
 
@@ -23,13 +24,22 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="preconnect" href="https://cdn.jsdelivr.net">
 
-  <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" sizes="any">
-  <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
+  <link rel="icon" href="{{ static_url('favicon.ico') }}" sizes="any">
+  <link rel="apple-touch-icon" href="{{ static_url('apple-touch-icon.png') }}">
+
+  <!-- Pinned Three.js Importmap for 3D Progressive Enhancement (Local Vendor) -->
+  <script nonce="{{ csp_nonce }}" type="importmap">
+    {
+      "imports": {
+        "three": "{{ static_url('vendor/three/three.module.js') }}"
+      }
+    }
+  </script>
 
   <!-- Applies the saved/preferred theme before first paint, so there's no
        flash of the wrong theme while the stylesheet is still loading. -->
        <meta name="csrf-token" content="{{ csrf_token() }}">
-  <script>
+  <script nonce="{{ csp_nonce }}">
     (function() {
       const stored = localStorage.getItem('snpro-theme');
       const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -41,9 +51,11 @@
 
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <link rel="stylesheet" href="{{ static_url('css/tokens.css') }}">
+  <link rel="stylesheet" href="{{ static_url('css/components.css') }}">
+  <link rel="stylesheet" href="{{ static_url('css/style.css') }}">
 
-  <link href="https://unpkg.com/aos@2.3.1/dist/aos.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/aos@2.3.1/dist/aos.css" rel="stylesheet">
 
   {% block extra_head %}{% endblock %}
 </head>
@@ -112,7 +124,7 @@
   </a>
   <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
     <li><a class="dropdown-item" href="{{ url_for('main.profile') }}"><i class="bi bi-person me-2"></i>Profile</a></li>
-    <li><a class="dropdown-item" href="{{ url_for('main.orders') }}"><i class="bi bi-box me-2"></i>Orders</a></li>
+    <li><a class="dropdown-item" href="{{ url_for('tools.history') }}"><i class="bi bi-clock-history me-2"></i>History</a></li>
     <li><a class="dropdown-item" href="{{ url_for('main.settings') }}"><i class="bi bi-gear me-2"></i>Settings</a></li>
     <li><hr class="dropdown-divider"></li>
     <li><a class="dropdown-item" href="{{ url_for('auth.logout') }}"><i class="bi bi-box-arrow-right me-2"></i>Sign out</a></li>
@@ -195,12 +207,12 @@
 </footer>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-<script src="{{ url_for('static', filename='js/theme.js') }}"></script>
-<script src="{{ url_for('static', filename='js/toasts.js') }}"></script>
-<script src="{{ url_for('static', filename='js/dropzone.js') }}"></script>
+<script src="{{ static_url('js/theme.js') }}"></script>
+<script src="{{ static_url('js/toasts.js') }}"></script>
+<script src="{{ static_url('js/dropzone.js') }}"></script>
 
-<script src="https://unpkg.com/aos@2.3.1/dist/aos.js"></script>
-<script>
+<script src="https://cdn.jsdelivr.net/npm/aos@2.3.1/dist/aos.js"></script>
+<script nonce="{{ csp_nonce }}">
   document.addEventListener('DOMContentLoaded', function() {
     AOS.init({
       duration: 700,
@@ -210,7 +222,7 @@
   });
 </script>
 
-<script>
+<script nonce="{{ csp_nonce }}">
   (function() {
     const flashSource = document.getElementById('flashSource');
     if (flashSource) {
@@ -231,7 +243,7 @@
      replaces the whole document anyway. Skips anchor links, new-tab
      links, and links already handled by JS (data-no-progress) so it only
      fires for actual navigations. -->
-<script>
+<script nonce="{{ csp_nonce }}">
   (function() {
     const bar = document.getElementById('routeProgress');
     if (!bar) return;
@@ -271,7 +283,7 @@
 </script>
 
 <!-- Back-to-top visibility + smooth scroll -->
-<script>
+<script nonce="{{ csp_nonce }}">
   (function() {
     const btn = document.getElementById('backToTop');
     if (!btn) return;

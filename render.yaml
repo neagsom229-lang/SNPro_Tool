@@ -1,15 +1,21 @@
+# render.yaml is the AUTHORITATIVE deployment configuration for Render.
+# NOTE ON DATABASE & ARCHITECTURE:
+# Render deploys web and worker as separate services with independent disk mounts.
+# SQLite files cannot be shared across separate Render services. For production multi-service
+# deploys using render.yaml, DATABASE_URL must be configured with a shared PostgreSQL database
+# (e.g., Render Managed PostgreSQL), or use Docker Compose / Docker for a single-node setup with shared volumes.
 services:
   - type: web
     name: snpro-web
     env: python
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn run:app --bind 0.0.0.0:$PORT
+    startCommand: gunicorn run:app --bind 0.0.0.0:$PORT --workers 1 --threads 4 --timeout 120
     healthCheckPath: /healthz
     envVars:
       - key: FLASK_SECRET_KEY
         generateValue: true
       - key: DATABASE_URL
-        value: sqlite:///instance/app.db  # NOTE: For multi-service production deploys, switch DATABASE_URL to a PostgreSQL connection string.
+        value: postgresql://user:pass@hostname:5432/dbname  # Set to a shared PostgreSQL connection string in production
       - key: CELERY_BROKER_URL
         fromService:
           name: snpro-redis
@@ -40,7 +46,7 @@ services:
       - key: FLASK_SECRET_KEY
         generateValue: true
       - key: DATABASE_URL
-        value: sqlite:///instance/app.db  # NOTE: Must match web service DATABASE_URL
+        value: postgresql://user:pass@hostname:5432/dbname  # Must match web service DATABASE_URL
       - key: CELERY_BROKER_URL
         fromService:
           name: snpro-redis

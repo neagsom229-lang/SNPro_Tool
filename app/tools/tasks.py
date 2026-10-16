@@ -5,20 +5,18 @@ import zipfile
 import traceback
 import json
 import subprocess
-import uuid
 from celery import shared_task
-import celery
-from werkzeug.utils import secure_filename
 
 from extensions import db
 
 from models import Job
 from flask import current_app
-from config import user_dir
+from utils import utcnow, ensure_utc
+from datetime import datetime, timezone
 
 # ----- Helper functions (defined once) -----
 def _set(job_id, **fields):
-    job = Job.query.get(job_id)
+    job = db.session.get(Job, job_id)
     if not job:
         return None
     for k, v in fields.items():
@@ -31,8 +29,10 @@ def _rel(path):
     return os.path.relpath(path, root)
 
 def _sorted_alnum(items):
-    convert = lambda t: int(t) if t.isdigit() else t.lower()
-    key = lambda s: [convert(c) for c in re.split(r"([0-9]+)", s)]
+    def convert(t):
+        return int(t) if t.isdigit() else t.lower()
+    def key(s):
+        return [convert(c) for c in re.split(r"([0-9]+)", s)]
     return sorted(items, key=key)
 
 def _friendly_error(prefix, exc):
@@ -43,19 +43,18 @@ def _friendly_error(prefix, exc):
     return f"{prefix}: {msg}"
 
 # ----- Import helpers from other modules -----
-from app.tools.speech_helpers import (
+from app.tools.speech_helpers import (  # noqa: E402
     transcribe_audio, translate_text, synthesize_speech,
     synthesize_with_elevenlabs, _synthesize_with_gtts, SUPPORTED_LANGUAGES,
 )
-from app.tools.ai_helpers import (
+from app.tools.ai_helpers import (  # noqa: E402
     transcribe_with_whisper, whisper_segments_to_srt,
     replicate_remove_background, replicate_restore_image,
     replicate_upscale_video, replicate_interpolate_frames,
     replicate_animate_image, safe_call,
 )
-from app.tools import editing_helpers as eh
-from app.tools.pdf_helpers import combine_files_to_pdf
-from app.tools.video_helpers import extract_audio_from_video, replace_audio_in_video
+from app.tools.pdf_helpers import combine_files_to_pdf  # noqa: E402
+from app.tools.video_helpers import extract_audio_from_video, replace_audio_in_video  # noqa: E402
 
 # ----- All Celery tasks follow (no routes!) -----
 # e.g. task_download_video, task_speech_to_text, etc.
@@ -244,9 +243,8 @@ def task_speech_to_text(self, job_id, input_path, language, out_dir):
             with open(out_file, "w", encoding="utf-8") as f:
                 f.write(final_text)
 
-            srt_file = None
             if result.get("segments"):
-                srt_file = whisper_segments_to_srt(result["segments"], os.path.join(out_dir, "transcript.srt"))
+                whisper_segments_to_srt(result["segments"], os.path.join(out_dir, "transcript.srt"))
 
             _set(
                 job_id, status="success", progress=100,
@@ -389,7 +387,6 @@ def task_text_to_speech(self, job_id, text, lang, out_dir, voice_id=None):
 # ---------------------------------------------------------------------------
 
 def _ffmpeg_extract_frames(video_path, frames_dir, frame_rate, progress_cb=None):
-    import subprocess
     os.makedirs(frames_dir, exist_ok=True)
     if progress_cb:
         progress_cb("Extracting frames (FFmpeg)...")
@@ -491,7 +488,7 @@ def task_pdf_to_word(self, job_id, pdf_path, out_dir):
 # 5. Images to video - cleaned-up Ken Burns, optional AI motion, captions
 # ---------------------------------------------------------------------------
 
-def _make_ken_burns_clip(img_path, duration, target_size, zoom=0.15):
+def _make_ken_burns_clip(img_path, duration, target_size, zoom=0.15, fps=24):
     """Simple, working zoom-in Ken Burns clip (no pan) - replaces the
     previous tangle of half-finished attempts with one clean implementation."""
     import moviepy.editor as mp
@@ -503,7 +500,6 @@ def _make_ken_burns_clip(img_path, duration, target_size, zoom=0.15):
         z = 1.0 + zoom * (t / duration)
         frame = base_clip.get_frame(t)
         h, w = frame.shape[:2]
-        # Resize is handled by moviepy's own resize before crop for correctness
         import numpy as np
         from PIL import Image
         im = Image.fromarray(frame).resize((int(w * z), int(h * z)), Image.LANCZOS)
@@ -513,7 +509,7 @@ def _make_ken_burns_clip(img_path, duration, target_size, zoom=0.15):
         cropped = im.crop((x, y, x + tw, y + th))
         return np.array(cropped)
 
-    return mp.VideoClip(make_frame, duration=duration)
+    return mp.VideoClip(make_frame, duration=duration).set_fps(fps)
 
 
 @shared_task(bind=True)
@@ -580,7 +576,7 @@ def task_images_to_video(self, job_id, images_dir, fps, audio_path, out_dir,
                     clip = ai_clip.resize(newsize=target_size)
 
             if clip is None and use_ken_burns:
-                clip = _make_ken_burns_clip(img_path, duration_per_image, target_size)
+                clip = _make_ken_burns_clip(img_path, duration_per_image, target_size, fps=fps)
 
             if clip is None:
                 clip = mp.ImageClip(img_path, duration=duration_per_image).resize(newsize=target_size)
@@ -644,7 +640,7 @@ def task_images_to_video(self, job_id, images_dir, fps, audio_path, out_dir,
 
         _set(job_id, progress=85, message="Rendering final video...")
         out_file = os.path.join(out_dir, "slideshow.mp4")
-        final_clip.write_videofile(out_file, codec="libx264", audio_codec="aac", logger=None, threads=4)
+        final_clip.write_videofile(out_file, codec="libx264", audio_codec="aac", logger=None, threads=4, fps=int(fps))
 
         message = "Done" + (" (captions.srt generated)" if srt_path else "")
         _set(job_id, status="success", progress=100, message=message, result_path=_rel(out_file))
@@ -845,10 +841,10 @@ def task_repair_photo(self, job_id, image_path, out_dir, use_ai=None, ai_scale=2
 
         _set(job_id, progress=65, message="Restoring contrast...")
         lab = cv2.cvtColor(denoised, cv2.COLOR_BGR2LAB)
-        l, a, b = cv2.split(lab)
+        l_chan, a_chan, b_chan = cv2.split(lab)
         clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-        l = clahe.apply(l)
-        contrast_boosted = cv2.cvtColor(cv2.merge((l, a, b)), cv2.COLOR_LAB2BGR)
+        l_chan = clahe.apply(l_chan)
+        contrast_boosted = cv2.cvtColor(cv2.merge((l_chan, a_chan, b_chan)), cv2.COLOR_LAB2BGR)
 
         _set(job_id, progress=85, message="Sharpening...")
         blurred = cv2.GaussianBlur(contrast_boosted, (0, 0), 2.0)
@@ -867,7 +863,6 @@ def task_repair_photo(self, job_id, image_path, out_dir, use_ai=None, ai_scale=2
 # ---------------------------------------------------------------------------
 
 def _ffmpeg_remove_or_replace_audio(video_path, replacement_audio_path, out_file):
-    import subprocess
     if replacement_audio_path and os.path.exists(replacement_audio_path):
         cmd = [
             "ffmpeg", "-y", "-i", video_path, "-i", replacement_audio_path,
@@ -943,7 +938,6 @@ _MAX_ENHANCE_SECONDS = 15 * 60  # refuse videos longer than 15 minutes on a shar
 
 def _probe_video(path):
     """Read basic stream info with ffprobe (already ships with ffmpeg)."""
-    import subprocess, json
     cmd = [
         "ffprobe", "-v", "quiet", "-print_format", "json",
         "-show_streams", "-show_format", path,
@@ -985,7 +979,7 @@ def _build_filter_chain(target_size, denoise, sharpen, color_enhance, src_size):
 
     denoise_strengths = {"light": "4:7:5:7", "medium": "8:7:5:7", "strong": "12:7:5:7"}
     if denoise and denoise != "off":
-        filters.append(f"hqdn3d" if denoise == "light" else f"nlmeans={denoise_strengths.get(denoise, denoise_strengths['medium'])}")
+        filters.append("hqdn3d" if denoise == "light" else f"nlmeans={denoise_strengths.get(denoise, denoise_strengths['medium'])}")
 
     if target_size and target_size != src_size:
         tw, th = target_size
@@ -1004,7 +998,6 @@ def _build_filter_chain(target_size, denoise, sharpen, color_enhance, src_size):
 
 
 def _ffmpeg_encode(in_path, out_path, vf_filter, out_fps, hwaccel_in, hwaccel_out, crf=18):
-    import subprocess
     cmd = ["ffmpeg", "-y", *hwaccel_in, "-i", in_path]
     if vf_filter:
         cmd += ["-vf", vf_filter]
@@ -1019,7 +1012,6 @@ def _ffmpeg_interpolate(in_path, out_path, target_fps):
     """Fast, always-available fallback for frame interpolation using
     ffmpeg's motion-compensated minterpolate filter. Slower per-frame than
     a simple duplicate/blend, but far better quality, and needs no model."""
-    import subprocess
     vf = f"minterpolate=fps={target_fps}:mi_mode=mci:mc_mode=aobmc:vsbmc=1"
     cmd = ["ffmpeg", "-y", "-i", in_path, "-vf", vf, "-c:a", "copy", out_path]
     subprocess.run(cmd, check=True, capture_output=True, text=True)
@@ -1168,7 +1160,7 @@ def translate_speech_task(self, job_id: int, source_audio_path: str, target_lang
       3. Synthesize translated text -> speech mp3 (ElevenLabs preferred, gTTS fallback)
       4. Update the Job row with the result path and status
     """
-    job = Job.query.get(job_id)
+    job = db.session.get(Job, job_id)
     if job is None:
         return {"status": "error", "message": f"Job {job_id} not found"}
 
@@ -1233,7 +1225,7 @@ def translate_speech_task(self, job_id: int, source_audio_path: str, target_lang
 
     except Exception as exc:
         db.session.rollback()
-        job = Job.query.get(job_id)
+        job = db.session.get(Job, job_id)
         if job:
             job.status = "failure"
             job.stage = "error"
@@ -1396,7 +1388,7 @@ def task_translate_video_speech(self, job_id, video_path, target_lang, out_dir,
 # 15. Automated Video Editing Pipeline (flagship tool)
 # ---------------------------------------------------------------------------
 
-from app.tools.editing_helpers import (
+from app.tools.editing_helpers import (  # noqa: E402
     load_template,
     trim_silence,
     apply_transitions,
@@ -1406,7 +1398,6 @@ from app.tools.editing_helpers import (
     apply_color_grade,
     export_multiple_formats,
     zip_outputs,
-    concatenate_clips,
     detect_highlights,
     extract_highlight_reel,
 )
@@ -1455,7 +1446,8 @@ def task_auto_edit_video(self, job_id, clip_paths, out_dir, template_name="cinem
         for idx, clip_path in enumerate(clip_paths):
             duration = None
             try:
-                import subprocess as _sp, json as _json
+                import subprocess as _sp
+                import json as _json
                 probe = _sp.run(
                     ["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", clip_path],
                     capture_output=True, text=True, check=True,
@@ -1645,10 +1637,10 @@ def cleanup_old_jobs(days: int = 7):
     """
     Periodic Celery beat task to clean up old job rows and files older than N days.
     Walks users/*/uploads/** and users/*/outputs/**, deletes files whose mtime is older than retention,
-    removes empty directories, and deletes expired Job rows. Uses naive datetime.utcnow().
+    removes empty directories, and deletes expired Job rows. Uses timezone-aware utcnow().
     """
-    from datetime import datetime, timedelta
-    cutoff = datetime.utcnow() - timedelta(days=days)
+    from datetime import timedelta
+    cutoff = utcnow() - timedelta(days=days)
     storage_root = current_app.config["STORAGE_ROOT"]
 
     # Walk uploads and outputs and remove old files & empty dirs
@@ -1662,8 +1654,8 @@ def cleanup_old_jobs(days: int = 7):
                         for file in files:
                             fpath = os.path.join(root, file)
                             try:
-                                mtime = datetime.fromtimestamp(os.path.getmtime(fpath))
-                                if mtime < cutoff:
+                                mtime = datetime.fromtimestamp(os.path.getmtime(fpath), tz=timezone.utc)
+                                if ensure_utc(mtime) < cutoff:
                                     os.remove(fpath)
                             except Exception as e:
                                 current_app.logger.warning(f"cleanup failed for {fpath}: {e}")
@@ -1702,10 +1694,10 @@ def watchdog_stuck_jobs():
     Celery beat task to mark stuck jobs as failed:
     - pending jobs older than 2 hours (7200s) based on created_at.
     - running jobs older than task_time_limit + 300 seconds (2200s) based on updated_at.
-    Uses naive datetime.utcnow().
+    Uses timezone-aware utcnow().
     """
-    from datetime import datetime, timedelta
-    now = datetime.utcnow()
+    from datetime import timedelta
+    now = utcnow()
     pending_cutoff = now - timedelta(hours=2)
     running_cutoff = now - timedelta(seconds=2200)
 

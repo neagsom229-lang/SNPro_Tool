@@ -1,5 +1,9 @@
 {% extends "base.html" %}
 
+{% block extra_head %}
+  <link rel="stylesheet" href="{{ static_url('css/pages/tool.css') }}">
+{% endblock %}
+
 {% block title %}{{ tool.name }} · SNPro{% endblock %}
 
 {% block content %}

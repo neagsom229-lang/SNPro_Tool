@@ -203,9 +203,12 @@ Open **three terminals** (all with the venv activated):
 # Terminal 1 — Redis (skip if you already have it running)
 redis-server
 
-# Terminal 2 — Celery worker
-celery -A celery_worker.celery worker --loglevel=info
-# on Windows, add: -P solo
+# Terminal 2 — Celery worker (handling both heavy and light queues)
+celery -A celery_worker.celery worker --loglevel=info -Q heavy,light
+# on Windows, add: -P solo (e.g., celery -A celery_worker.celery worker --loglevel=info -P solo -Q heavy,light)
+# Note: Tasks like auto_edit_video, enhance_video, and images_to_video are explicitly
+# routed to the 'heavy' queue in task_routes. If the worker does not listen to -Q heavy,
+# those heavy jobs will remain stuck in pending and never execute.
 
 # Terminal 3 — Flask app
 python run.py

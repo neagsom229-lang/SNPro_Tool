@@ -1,0 +1,51 @@
+/**
+ * job.css — Job Status Progress & Stepper Styles
+ */
+.job-progress-container {
+  max-width: 600px;
+  margin: var(--space-6) auto;
+  text-align: center;
+}
+
+.job-stepper {
+  display: flex;
+  justify-content: space-between;
+  position: relative;
+  margin-bottom: var(--space-5);
+}
+
+.job-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  z-index: 2;
+}
+
+.job-step-circle {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  border: 2px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  transition: all var(--dur-norm);
+}
+
+.job-step.active .job-step-circle {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--ink-900);
+  box-shadow: 0 0 12px var(--accent-subtle);
+}
+
+.job-step.completed .job-step-circle {
+  background: #198754;
+  border-color: #198754;
+  color: #fff;
+}

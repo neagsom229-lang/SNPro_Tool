@@ -27,7 +27,6 @@ import img2pdf
 from PIL import Image
 from pypdf import PdfReader, PdfWriter
 from reportlab.lib.pagesizes import A4, LETTER, LEGAL, landscape, portrait
-from reportlab.lib.units import inch
 from reportlab.pdfgen import canvas
 
 # ---------------------------------------------------------------------------

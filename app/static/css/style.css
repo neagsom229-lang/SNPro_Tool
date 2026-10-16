@@ -19,10 +19,6 @@
   --amber-strong: #d6912f;
   --teal: #4fb3a9;
   --danger: #e2665f;
-  --text-dark: #eef0f5;
-  --text-dark-dim: #9aa2b8;
-  --text-light: #21231f;
-  --text-light-dim: #6b6455;
   --radius-sm: 4px;
   --radius-md: 10px;
   --radius-lg: 20px;
@@ -193,6 +189,7 @@ a:hover { color: var(--accent-strong); }
 }
 .navbar-snpro .navbar-nav .nav-link {
   position: relative;
+  color: var(--text) !important;
   transition: color var(--dur-fast) ease;
 }
 .navbar-snpro .navbar-nav .nav-link::after {
@@ -849,10 +846,13 @@ main {
   pointer-events: none;
 }
 
-/* ----- Navbar search field with leading icon ----- */
+/* ----- Navbar search field with leading icon & constraints ----- */
 .nav-search {
   position: relative;
   align-items: center;
+  flex: 1 1 auto;
+  max-width: 320px;
+  min-width: 0;
 }
 .nav-search .nav-search-icon {
   position: absolute;
@@ -863,6 +863,30 @@ main {
 }
 .nav-search .form-control {
   padding-left: 2rem;
+}
+.navbar-snpro .navbar-nav .nav-link,
+.navbar-snpro .navbar-nav .btn {
+  white-space: nowrap;
+}
+
+/* ----- Hero paragraph contrast (WCAG AA in both themes) ----- */
+.hero-panel p.text-body-secondary,
+.hero-panel p {
+  color: var(--text);
+  opacity: 0.85;
+}
+
+/* ----- AOS Progressive Enhancement ----- */
+[data-aos] {
+  opacity: 1;
+  transform: none;
+}
+html.js [data-aos].aos-init:not(.aos-animate) {
+  opacity: 0;
+}
+html.js [data-aos].aos-init.aos-animate {
+  opacity: 1;
+  transform: none;
 }
 
 /* ----- Back-to-top button ----- */

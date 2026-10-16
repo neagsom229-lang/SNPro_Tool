@@ -1,4 +1,8 @@
 {% extends "base.html" %}
+
+{% block extra_head %}
+  <link rel="stylesheet" href="{{ static_url('css/pages/tool.css') }}">
+{% endblock %}
 {% block title %}Video Speech Translator · SNPro{% endblock %}
 
 {% block content %}
@@ -151,7 +155,7 @@
 
 {% block extra_scripts %}
 {{ super() }}
-<script>
+<script nonce="{{ csp_nonce }}">
 document.addEventListener("DOMContentLoaded", function() {
   const dropzone = document.getElementById("video-dropzone");
   const fileInput = document.getElementById("video-input");

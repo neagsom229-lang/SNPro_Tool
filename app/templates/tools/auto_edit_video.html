@@ -1,4 +1,8 @@
 {% extends "base.html" %}
+
+{% block extra_head %}
+  <link rel="stylesheet" href="{{ static_url('css/pages/tool.css') }}">
+{% endblock %}
 {% block title %}Auto‑Edit Video · SNPro{% endblock %}
 
 {% block content %}
@@ -320,7 +324,7 @@
 
 {% block extra_scripts %}
 {{ super() }}
-<script>
+<script nonce="{{ csp_nonce }}">
 document.addEventListener("DOMContentLoaded", function() {
   const dropzone = document.getElementById("clips-dropzone");
   const fileInput = document.getElementById("clips-input");

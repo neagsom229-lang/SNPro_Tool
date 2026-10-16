@@ -1,7 +1,6 @@
 from flask import Blueprint, render_template, redirect, url_for, request, flash, current_app
 from flask_login import login_required, current_user
 from sqlalchemy import func
-from werkzeug.security import check_password_hash
 from app.auth.forms import MIN_PASSWORD_LENGTH
 from sqlalchemy.exc import IntegrityError
 import os
@@ -9,7 +8,6 @@ import os
 from models import User, Job
 from extensions import db
 from config import user_dir
-from app.auth.forms import ChangePasswordForm
 
 main_bp = Blueprint("main", __name__)
 
@@ -273,7 +271,8 @@ def dashboard():
 
 @main_bp.route("/_debug/redis-url")
 def _debug_redis_url():
-    import os, re
+    import os
+    import re
     broker = os.environ.get("CELERY_BROKER_URL", "NOT SET")
     backend = os.environ.get("CELERY_RESULT_BACKEND", "NOT SET")
     masked_broker = re.sub(r':[^@]+@', ':***@', broker)
@@ -284,19 +283,24 @@ def _debug_redis_url():
 @main_bp.route("/healthz")
 def healthz():
     """
-    Health check endpoint: checks DB (SELECT 1), Redis ping, and ffmpeg presence.
-    Returns 200 JSON on success, 503 JSON on failure.
+    Health check endpoint: checks DB, Redis, ffmpeg, ffprobe, and worker status.
+    Reports worker_status as 'ok', 'no workers', or 'unknown'.
+    Always returns 200 unless critical system components fail.
     """
     from flask import jsonify
-    import subprocess
-    status = {"db": "ok", "redis": "ok", "ffmpeg": "ok"}
-    healthy = True
+    import shutil
+    status = {
+        "db": "ok",
+        "redis": "ok",
+        "ffmpeg": "ok" if shutil.which("ffmpeg") else "not found",
+        "ffprobe": "ok" if shutil.which("ffprobe") else "not found",
+        "worker_status": "unknown"
+    }
 
     try:
         db.session.execute(db.text("SELECT 1"))
     except Exception as e:
         status["db"] = f"error: {e}"
-        healthy = False
 
     try:
         from redis import Redis
@@ -305,13 +309,76 @@ def healthz():
         r.ping()
     except Exception as e:
         status["redis"] = f"error: {e}"
-        healthy = False
+
+    try:
+        from extensions import celery as celery_app
+        i = celery_app.control.inspect(timeout=1.0)
+        active_queues = i.active_queues() if i else None
+        if active_queues:
+            worker_queues_ok = False
+            for worker, queues in active_queues.items():
+                q_names = [q.get('name') for q in queues]
+                if 'heavy' in q_names and 'light' in q_names:
+                    worker_queues_ok = True
+                    break
+            status["worker_status"] = "ok" if worker_queues_ok else "no workers (missing heavy/light queues)"
+        else:
+            status["worker_status"] = "no workers"
+    except Exception as e:
+        status["worker_status"] = f"unknown: {e}"
+
+    return jsonify(status), 200
+
+
+@main_bp.route("/readyz")
+def readyz():
+    """
+    Readiness check endpoint: strict check requiring DB, Redis, ffmpeg, and worker.
+    Returns 200 JSON on success, 503 JSON on failure.
+    """
+    from flask import jsonify
+    import subprocess
+    status = {"db": "ok", "redis": "ok", "ffmpeg": "ok", "worker": "ok"}
+    ready = True
+
+    try:
+        db.session.execute(db.text("SELECT 1"))
+    except Exception:
+        ready = False
+        status["db"] = "error"
+
+    try:
+        from redis import Redis
+        broker_url = current_app.config.get("CELERY_BROKER_URL", "redis://localhost:6379/0")
+        r = Redis.from_url(broker_url)
+        r.ping()
+    except Exception:
+        ready = False
+        status["redis"] = "error"
 
     try:
         subprocess.run(["ffmpeg", "-version"], capture_output=True, check=True)
-    except Exception as e:
-        status["ffmpeg"] = f"error: {e}"
-        healthy = False
+    except Exception:
+        ready = False
+        status["ffmpeg"] = "error"
 
-    code = 200 if healthy else 503
+    try:
+        from extensions import celery as celery_app
+        i = celery_app.control.inspect(timeout=1.0)
+        active_queues = i.active_queues() if i else None
+        worker_ok = False
+        if active_queues:
+            for worker, queues in active_queues.items():
+                q_names = [q.get('name') for q in queues]
+                if 'heavy' in q_names and 'light' in q_names:
+                    worker_ok = True
+                    break
+        if not worker_ok:
+            ready = False
+            status["worker"] = "error"
+    except Exception:
+        ready = False
+        status["worker"] = "error"
+
+    code = 200 if ready else 503
     return jsonify(status), code

@@ -1,12 +1,12 @@
 import os
 import shutil
 import uuid
-import io
 import qrcode
 import json
+import threading
 from flask import (
     Blueprint, render_template, request, redirect, url_for, flash,
-    jsonify, send_from_directory, current_app, abort, send_file
+    jsonify, send_from_directory, current_app, abort, Response, stream_with_context
 )
 from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
@@ -22,7 +22,6 @@ from app.main.routes import TOOLS
 from app.tools.speech_helpers import (
     SUPPORTED_LANGUAGES,
     allowed_audio_file,
-    MAX_UPLOAD_MB,
 )
 from app.tools.tasks import translate_speech_task
 
@@ -59,7 +58,10 @@ def _active_job_limit_ok():
         Job.user_id == current_user.id,
         Job.status.in_(("pending", "running"))
     ).count()
-    return count < limit
+    if count >= limit:
+        flash(f"You already have {limit} active jobs. Please wait for one to finish.", "warning")
+        return False
+    return True
 
 
 def _safe_redirect_url(url, fallback):
@@ -81,7 +83,6 @@ def _safe_redirect_url(url, fallback):
 def video_downloader():
     if request.method == "POST":
         if not _active_job_limit_ok():
-            flash("You already have N active jobs. Please wait for one to finish.", "warning")
             return redirect(url_for("tools.video_downloader"))
         url = request.form.get("url", "").strip()
         mode = request.form.get("mode", "video")
@@ -107,7 +108,6 @@ def video_downloader():
 def speech_to_text():
     if request.method == "POST":
         if not _active_job_limit_ok():
-            flash("You already have N active jobs. Please wait for one to finish.", "warning")
             return redirect(url_for("tools.speech_to_text"))
         file = request.files.get("audio")
         language = request.form.get("language", "en-US")
@@ -142,7 +142,6 @@ def speech_to_text():
 def video_to_frames():
     if request.method == "POST":
         if not _active_job_limit_ok():
-            flash("You already have N active jobs. Please wait for one to finish.", "warning")
             return redirect(url_for("tools.video_to_frames"))
         file = request.files.get("video")
         frame_rate = float(request.form.get("frame_rate", 1))
@@ -172,7 +171,6 @@ def video_to_frames():
 def pdf_to_word():
     if request.method == "POST":
         if not _active_job_limit_ok():
-            flash("You already have N active jobs. Please wait for one to finish.", "warning")
             return redirect(url_for("tools.pdf_to_word"))
         file = request.files.get("pdf")
         if not file or file.filename == "":
@@ -202,7 +200,6 @@ def pdf_to_word():
 def images_to_video():
     if request.method == "POST":
         if not _active_job_limit_ok():
-            flash("You already have N active jobs. Please wait for one to finish.", "warning")
             return redirect(url_for("tools.images_to_video"))
         files = request.files.getlist("images")
         audio_file = request.files.get("audio")
@@ -256,7 +253,6 @@ def images_to_video():
 def qr_code():
     if request.method == "POST":
         if not _active_job_limit_ok():
-            flash("You already have N active jobs. Please wait for one to finish.", "warning")
             return redirect(url_for("tools.qr_code"))
         text = request.form.get("text", "").strip()
         if not text:
@@ -296,7 +292,6 @@ def qr_code():
 def text_to_speech():
     if request.method == "POST":
         if not _active_job_limit_ok():
-            flash("You already have N active jobs. Please wait for one to finish.", "warning")
             return redirect(url_for("tools.text_to_speech"))
         text = request.form.get("text", "").strip()
         lang = request.form.get("lang", "en")
@@ -336,7 +331,6 @@ def text_to_speech():
 def background_remover():
     if request.method == "POST":
         if not _active_job_limit_ok():
-            flash("You already have N active jobs. Please wait for one to finish.", "warning")
             return redirect(url_for("tools.background_remover"))
         file = request.files.get("image")
         if not file or file.filename == "":
@@ -366,7 +360,6 @@ def background_remover():
 def background_replacer():
     if request.method == "POST":
         if not _active_job_limit_ok():
-            flash("You already have N active jobs. Please wait for one to finish.", "warning")
             return redirect(url_for("tools.background_replacer"))
         subject_file = request.files.get("subject")
         bg_file = request.files.get("background")
@@ -400,7 +393,6 @@ def background_replacer():
 def photo_repair():
     if request.method == "POST":
         if not _active_job_limit_ok():
-            flash("You already have N active jobs. Please wait for one to finish.", "warning")
             return redirect(url_for("tools.photo_repair"))
         file = request.files.get("image")
         if not file or file.filename == "":
@@ -430,7 +422,6 @@ def photo_repair():
 def audio_remover():
     if request.method == "POST":
         if not _active_job_limit_ok():
-            flash("You already have N active jobs. Please wait for one to finish.", "warning")
             return redirect(url_for("tools.audio_remover"))
         video_file = request.files.get("video")
         audio_file = request.files.get("audio")
@@ -469,7 +460,6 @@ def audio_remover():
 def video_enhancer():
     if request.method == "POST":
         if not _active_job_limit_ok():
-            flash("You already have N active jobs. Please wait for one to finish.", "warning")
             return redirect(url_for("tools.video_enhancer"))
         file = request.files.get("video")
         target = request.form.get("target", "original")
@@ -522,7 +512,6 @@ def speech_translator():
 
     # POST: validate and process
     if not _active_job_limit_ok():
-        flash("You already have N active jobs. Please wait for one to finish.", "warning")
         return redirect(url_for("tools.speech_translator"))
     audio_file = request.files.get("audio_file")
     target_lang = request.form.get("target_lang")
@@ -553,7 +542,7 @@ def speech_translator():
     }
     db.session.commit()
 
-    out_dir = user_dir(current_app.config["STORAGE_ROOT"], current_user.id, "outputs", "speech_translator", str(job.id))
+    user_dir(current_app.config["STORAGE_ROOT"], current_user.id, "outputs", "speech_translator", str(job.id))
 
     translate_speech_task.delay(
         job_id=job.id,
@@ -569,7 +558,7 @@ def speech_translator():
 @tools_bp.route("/speech-translator/status/<int:job_id>")
 @login_required
 def speech_translator_status(job_id):
-    job = Job.query.get_or_404(job_id)
+    job = db.get_or_404(Job, job_id)
     if job.user_id != current_user.id:
         return jsonify({"error": "not found"}), 404
 
@@ -594,7 +583,7 @@ def speech_translator_status(job_id):
 @tools_bp.route("/job/<int:job_id>")
 @login_required
 def job_view(job_id):
-    job = Job.query.get_or_404(job_id)
+    job = db.get_or_404(Job, job_id)
     if job.user_id != current_user.id:
         abort(403)
     return render_template("tools/job_status.html", job=job)
@@ -604,16 +593,91 @@ def job_view(job_id):
 @login_required
 @limiter.exempt
 def job_status_json(job_id):
-    job = Job.query.get_or_404(job_id)
+    job = db.get_or_404(Job, job_id)
     if job.user_id != current_user.id:
         abort(403)
     return jsonify(job.to_dict())
 
 
+_ACTIVE_SSE_STREAMS = 0
+_SSE_LOCK = threading.Lock()
+MAX_CONCURRENT_SSE = 3
+
+
+@tools_bp.route("/job/<int:job_id>/events")
+@login_required
+@limiter.exempt
+def job_events(job_id):
+    global _ACTIVE_SSE_STREAMS
+    job = db.get_or_404(Job, job_id)
+    if job.user_id != current_user.id:
+        abort(403)
+
+    with _SSE_LOCK:
+        if _ACTIVE_SSE_STREAMS >= MAX_CONCURRENT_SSE:
+            return Response("Too many concurrent streams", status=429, headers={"Retry-After": "5"})
+        _ACTIVE_SSE_STREAMS += 1
+
+    app_obj = current_app._get_current_object()
+
+    @stream_with_context
+    def generate():
+        global _ACTIVE_SSE_STREAMS
+        with app_obj.app_context():
+            try:
+                import time
+                start_time = time.time()
+                last_state = None
+                last_heartbeat = time.time()
+
+                while True:
+                    db.session.expire_all()
+                    current_job = db.session.get(Job, job_id)
+                    if not current_job:
+                        db.session.remove()
+                        break
+
+                    elapsed = time.time() - start_time
+                    if elapsed > 300:
+                        yield "retry: 3000\n"
+                        yield f"data: {json.dumps({'status': current_job.status, 'progress': current_job.progress, 'message': 'Stream lifetime cap reached. Reconnecting...', 'stage': current_job.stage, 'has_result': bool(current_job.result_path)})}\n\n"
+                        db.session.remove()
+                        break
+
+                    current_state = (current_job.status, current_job.progress, current_job.message, current_job.stage)
+
+                    if current_state != last_state or time.time() - last_heartbeat >= 15:
+                        if current_state != last_state:
+                            last_state = current_state
+                            data = json.dumps(current_job.to_dict())
+                            yield f"data: {data}\n\n"
+                        else:
+                            last_heartbeat = time.time()
+                            yield ": heartbeat\n\n"
+
+                        if current_job.status in ("success", "failure"):
+                            db.session.remove()
+                            break
+
+                    db.session.remove()
+                    time.sleep(1.0)
+            finally:
+                db.session.remove()
+                with _SSE_LOCK:
+                    _ACTIVE_SSE_STREAMS = max(0, _ACTIVE_SSE_STREAMS - 1)
+
+    headers = {
+        "Cache-Control": "no-cache",
+        "X-Accel-Buffering": "no",
+        "Connection": "keep-alive"
+    }
+    return Response(generate(), mimetype="text/event-stream", headers=headers)
+
+
 @tools_bp.route("/job/<int:job_id>/download")
 @login_required
 def job_download(job_id):
-    job = Job.query.get_or_404(job_id)
+    job = db.get_or_404(Job, job_id)
     if job.user_id != current_user.id:
         abort(403)
 
@@ -657,7 +721,7 @@ def history():
 @tools_bp.route("/job/<int:job_id>/delete", methods=["POST"])
 @login_required
 def job_delete(job_id):
-    job = Job.query.get_or_404(job_id)
+    job = db.get_or_404(Job, job_id)
     if job.user_id != current_user.id:
         abort(403)
 
@@ -699,7 +763,6 @@ _COMBINE_PDF_ALLOWED_EXT = IMAGE_EXTS | VIDEO_EXTS | TEXT_EXTS | PDF_EXTS
 def combine_pdf():
     if request.method == "POST":
         if not _active_job_limit_ok():
-            flash("You already have N active jobs. Please wait for one to finish.", "warning")
             return redirect(url_for("tools.combine_pdf"))
         files = request.files.getlist("files")
         files = [f for f in files if f and f.filename]
@@ -758,7 +821,6 @@ def combine_pdf():
 def video_speech_translator():
     if request.method == "POST":
         if not _active_job_limit_ok():
-            flash("You already have N active jobs. Please wait for one to finish.", "warning")
             return redirect(url_for("tools.video_speech_translator"))
         file = request.files.get("video")
         target_lang = request.form.get("target_lang")
@@ -812,7 +874,7 @@ def video_speech_translator():
 @tools_bp.route("/job/<int:job_id>/subtitles")
 @login_required
 def job_download_subtitles(job_id):
-    job = Job.query.get_or_404(job_id)
+    job = db.get_or_404(Job, job_id)
     if job.user_id != current_user.id:
         abort(403)
 
@@ -859,7 +921,6 @@ def _load_template_choices():
 def auto_edit_video():
     if request.method == "POST":
         if not _active_job_limit_ok():
-            flash("You already have N active jobs. Please wait for one to finish.", "warning")
             return redirect(url_for("tools.auto_edit_video"))
         files = request.files.getlist("clips")
         files = [f for f in files if f and f.filename]

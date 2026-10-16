@@ -7,7 +7,6 @@ factory on its own. Importing this module runs create_app(), which
 `celery` global in extensions.py before we re-export it here.
 """
 from app import create_app
-from extensions import celery
 
 # Creating the app has the side effect of configuring `celery`
 # (broker/backend URLs, task_routes, SSL options, etc.) via make_celery().

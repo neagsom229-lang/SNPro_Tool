@@ -95,7 +95,7 @@ def users():
 @login_required
 @admin_required
 def toggle_admin(user_id):
-    user = User.query.get_or_404(user_id)
+    user = db.get_or_404(User, user_id)
 
     if user.id == current_user.id:
         flash("You can't change your own admin status.", "warning")

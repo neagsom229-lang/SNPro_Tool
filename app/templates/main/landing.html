@@ -1,6 +1,9 @@
 {% extends "base.html" %}
 
+{% block breadcrumb %}{% endblock %}
+
 {% block extra_head %}
+  <link rel="stylesheet" href="{{ static_url('css/pages/landing.css') }}">
   {# Swiper CSS only - AOS is already loaded once, globally, by base.html #}
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css" />
   <style>
@@ -52,25 +55,32 @@
 
 <!-- Hero Panel -->
 <div class="hero-panel mb-5" data-aos="fade-up">
-  <div class="hero-index" data-aos="fade-down" data-aos-delay="50">{{ tools|length }} TOOLS · ONE ACCOUNT</div>
-  <h1 class="display-5 fw-bold mb-3" data-aos="fade-right" data-aos-delay="100">
-    A small media toolkit that does the boring work for you.
-  </h1>
-  <p class="text-body-secondary mb-4" style="max-width:60ch;" data-aos="fade-right" data-aos-delay="200">
-    Download a video, transcribe a voice note, pull frames from a clip, turn a PDF into
-    something editable, cut a subject out of a photo, repair an old picture, strip or swap a
-    video's audio, sharpen up footage, print a QR code, or read text out loud —
-    from one dashboard, saved to your own account.
-  </p>
-  <div class="d-flex gap-2 flex-wrap" data-aos="fade-up" data-aos-delay="300">
-    <a href="{{ url_for('auth.register') }}" class="btn btn-accent btn-lg px-4">Create a free account</a>
-    <a href="{{ url_for('auth.login') }}" class="btn btn-outline-snpro btn-lg px-4">Sign in</a>
+  <div class="row align-items-center g-4">
+    <div class="col-lg-6">
+      <div class="hero-index mb-2" data-aos="fade-down" data-aos-delay="50">{{ tools|length }} TOOLS · ONE ACCOUNT</div>
+      <h1 class="display-5 fw-bold mb-3" data-aos="fade-right" data-aos-delay="100">
+        A small media toolkit that does the boring work for you.
+      </h1>
+      <p class="text-body-secondary mb-4" style="max-width:60ch;" data-aos="fade-right" data-aos-delay="200">
+        Download a video, transcribe a voice note, pull frames from a clip, turn a PDF into
+        something editable, cut a subject out of a photo, repair an old picture, strip or swap a
+        video's audio, sharpen up footage, print a QR code, or read text out loud —
+        from one dashboard, saved to your own account.
+      </p>
+      <div class="d-flex gap-2 flex-wrap mb-4" data-aos="fade-up" data-aos-delay="300">
+        <a href="{{ url_for('auth.register') }}" class="btn btn-accent btn-lg px-4">Create a free account</a>
+        <a href="{{ url_for('auth.login') }}" class="btn btn-outline-snpro btn-lg px-4">Sign in</a>
+      </div>
+    </div>
+    <div class="col-lg-6">
+      <div id="hero3DContainer" class="rounded-4 overflow-hidden shadow-sm" style="min-height: 380px; aspect-ratio: 4 / 3; position: relative;" aria-label="Interactive 3D media pipeline visualization"></div>
+    </div>
   </div>
 
   <!-- Animated Stats - counts are computed from the real tool list below,
        never hand-typed, so they can't silently drift out of date again as
        more tools ship. -->
-  <div class="hero-stats" data-aos="fade-up" data-aos-delay="400">
+  <div class="hero-stats mt-4" data-aos="fade-up" data-aos-delay="400">
     <div>
       <span class="stat-number" data-target="{{ tools|length }}">0</span>
       <div class="stat-label">tools, one login</div>
@@ -135,7 +145,7 @@
 
   {# Swiper JS #}
   <script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js"></script>
-  <script>
+  <script nonce="{{ csp_nonce }}">
     const toolsSwiper = new Swiper('.tools-swiper', {
       slidesPerView: 1,
       spaceBetween: 20,
@@ -198,7 +208,7 @@
   </script>
 
   {# Animated Counters #}
-  <script>
+  <script nonce="{{ csp_nonce }}">
     document.addEventListener('DOMContentLoaded', () => {
       const counters = document.querySelectorAll('.stat-number');
       const observer = new IntersectionObserver((entries) => {
@@ -228,5 +238,50 @@
         }, 30);
       }
     });
+  </script>
+
+  {# 3D Hero Scene Progressive Enhancement (Deferred after first paint with Safari requestIdleCallback fallback) #}
+  <script nonce="{{ csp_nonce }}" type="module">
+    import { check3DCapability } from "{{ static_url('js/3d/quality.js') }}";
+    import { setupFallback } from "{{ static_url('js/3d/fallback.js') }}";
+    import { Hero3DScene } from "{{ static_url('vendor/three/hero.bundle.min.js' if not config.DEBUG else 'js/3d/hero.js') }}";
+
+    const initHero3D = () => {
+      const container = document.getElementById('hero3DContainer');
+      if (!container) return;
+
+      const capability = check3DCapability();
+      if (!capability.enabled) {
+        console.info('SNPro 3D skipped:', capability.reason);
+        setupFallback(container);
+        return;
+      }
+
+      let sceneInstance = null;
+      const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            if (!sceneInstance) {
+              sceneInstance = new Hero3DScene(container);
+              sceneInstance.init();
+            } else {
+              sceneInstance.resume();
+            }
+          } else {
+            if (sceneInstance) {
+              sceneInstance.pause();
+            }
+          }
+        });
+      }, { threshold: 0.1 });
+
+      observer.observe(container);
+    };
+
+    const scheduleIdle = window.requestIdleCallback || function(cb) {
+      return setTimeout(() => cb({ didTimeout: false, timeRemaining: () => 50 }), 1);
+    };
+
+    scheduleIdle(initHero3D, { timeout: 2000 });
   </script>
 {% endblock %}
